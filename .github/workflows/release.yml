@@ -70,7 +70,7 @@ jobs:
           mkdir -p "$dir"
           cp -a "artifacts/publish/$RID/." "$dir/"
           rm -f "$dir/web.config" "$dir/appsettings.Development.json"
-          cp LICENSE README.md CHANGELOG.md "$dir/"
+          cp LICENSE README.md CHANGELOG.md SECURITY.md CONTRIBUTING.md "$dir/"
           case "$RID" in
             linux-*) cp deploy/install.sh deploy/skimr.service "$dir/" ;;
             win-*) cp deploy/install.ps1 "$dir/" ;;
