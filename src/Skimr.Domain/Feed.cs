@@ -41,5 +41,10 @@ public sealed class Feed
 
     public DateTime? WebSubLeaseExpiresAt { get; set; }
 
+    public long? IconId { get; set; }
+
+    /// <summary>Last favicon attempt, so a site without one isn't asked on every fetch.</summary>
+    public DateTime? IconCheckedAt { get; set; }
+
     public List<Subscription> Subscriptions { get; } = [];
 }

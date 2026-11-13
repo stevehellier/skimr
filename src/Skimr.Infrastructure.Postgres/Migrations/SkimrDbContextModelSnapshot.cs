@@ -260,6 +260,10 @@ namespace Skimr.Infrastructure.Postgres.Migrations
                     b.Property<DateTime>("PublishedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("SearchText")
+                        .HasMaxLength(20000)
+                        .HasColumnType("character varying(20000)");
+
                     b.Property<string>("Snippet")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -292,6 +296,51 @@ namespace Skimr.Infrastructure.Postgres.Migrations
                     b.ToTable("Articles");
                 });
 
+            modelBuilder.Entity("Skimr.Domain.Board", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("Boards");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.BoardArticle", b =>
+                {
+                    b.Property<long>("BoardId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ArticleId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("AddedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("BoardId", "ArticleId");
+
+                    b.HasIndex("ArticleId");
+
+                    b.ToTable("BoardArticles");
+                });
+
             modelBuilder.Entity("Skimr.Domain.Feed", b =>
                 {
                     b.Property<long>("Id")
@@ -317,6 +366,12 @@ namespace Skimr.Infrastructure.Postgres.Migrations
                     b.Property<string>("HubUrl")
                         .HasMaxLength(2048)
                         .HasColumnType("character varying(2048)");
+
+                    b.Property<DateTime?>("IconCheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("IconId")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("LastError")
                         .HasMaxLength(1000)
@@ -364,6 +419,8 @@ namespace Skimr.Infrastructure.Postgres.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("IconId");
+
                     b.HasIndex("NextFetchAt");
 
                     b.HasIndex("Url")
@@ -397,6 +454,40 @@ namespace Skimr.Infrastructure.Postgres.Migrations
                         .IsUnique();
 
                     b.ToTable("Folders");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.Icon", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Hash")
+                        .IsUnique();
+
+                    b.ToTable("Icons");
                 });
 
             modelBuilder.Entity("Skimr.Domain.Invite", b =>
@@ -723,6 +814,40 @@ namespace Skimr.Infrastructure.Postgres.Migrations
                     b.Navigation("Feed");
                 });
 
+            modelBuilder.Entity("Skimr.Domain.Board", b =>
+                {
+                    b.HasOne("Skimr.Infrastructure.Identity.SkimrUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Skimr.Domain.BoardArticle", b =>
+                {
+                    b.HasOne("Skimr.Domain.Article", null)
+                        .WithMany()
+                        .HasForeignKey("ArticleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Skimr.Domain.Board", "Board")
+                        .WithMany("Articles")
+                        .HasForeignKey("BoardId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Board");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.Feed", b =>
+                {
+                    b.HasOne("Skimr.Domain.Icon", null)
+                        .WithMany()
+                        .HasForeignKey("IconId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
             modelBuilder.Entity("Skimr.Domain.Folder", b =>
                 {
                     b.HasOne("Skimr.Infrastructure.Identity.SkimrUser", null)
@@ -814,6 +939,11 @@ namespace Skimr.Infrastructure.Postgres.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Skimr.Domain.Board", b =>
+                {
+                    b.Navigation("Articles");
                 });
 
             modelBuilder.Entity("Skimr.Domain.Feed", b =>

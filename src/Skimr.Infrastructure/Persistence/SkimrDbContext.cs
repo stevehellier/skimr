@@ -24,6 +24,12 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options)
 
     public DbSet<ViewPreference> ViewPreferences => Set<ViewPreference>();
 
+    public DbSet<Board> Boards => Set<Board>();
+
+    public DbSet<BoardArticle> BoardArticles => Set<BoardArticle>();
+
+    public DbSet<Icon> Icons => Set<Icon>();
+
     public DbSet<Feed> Feeds => Set<Feed>();
 
     public DbSet<Article> Articles => Set<Article>();
@@ -94,6 +100,29 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options)
             e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<Board>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.HasIndex(x => new { x.UserId, x.Name }).IsUnique();
+            e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BoardArticle>(e =>
+        {
+            e.HasKey(x => new { x.BoardId, x.ArticleId });
+            e.HasIndex(x => x.ArticleId);
+            e.HasOne(x => x.Board).WithMany(b => b.Articles).HasForeignKey(x => x.BoardId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Article>().WithMany().HasForeignKey(x => x.ArticleId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Icon>(e =>
+        {
+            e.Property(x => x.Hash).HasMaxLength(64);
+            e.HasIndex(x => x.Hash).IsUnique();
+            e.Property(x => x.MimeType).HasMaxLength(50);
+            e.Property(x => x.FileName).HasMaxLength(100);
+        });
+
         modelBuilder.Entity<AppSetting>(e =>
         {
             e.HasKey(x => x.Key);
@@ -115,6 +144,7 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options)
             e.Property(x => x.SelfUrl).HasMaxLength(2048);
             e.Property(x => x.WebSubSecret).HasMaxLength(200);
             e.HasIndex(x => x.NextFetchAt);
+            e.HasOne<Icon>().WithMany().HasForeignKey(x => x.IconId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<Article>(e =>
@@ -128,6 +158,7 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options)
             e.Property(x => x.Title).HasMaxLength(1000);
             e.Property(x => x.Author).HasMaxLength(500);
             e.Property(x => x.Snippet).HasMaxLength(500);
+            e.Property(x => x.SearchText).HasMaxLength(20000);
             e.Property(x => x.ThumbnailUrl).HasMaxLength(2048);
             e.Property(x => x.ContentHash).HasMaxLength(64);
             e.HasOne(x => x.Feed).WithMany().HasForeignKey(x => x.FeedId).OnDelete(DeleteBehavior.Cascade);
