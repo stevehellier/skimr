@@ -12,6 +12,7 @@
 @using Skimr.Infrastructure.Reading
 @inject ReadingService Reading
 @inject LibraryService Library
+@inject FullTextService FullText
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 @inject TimeProvider Time
@@ -107,7 +108,8 @@
 
     @if (_article is not null)
     {
-        <ArticlePane Article="_article" OnClose="CloseAsync" OnToggleSaved="() => ToggleSavedAsync(_article.ArticleId)" OnToggleRead="() => ToggleReadAsync(_article.ArticleId)">
+        <ArticlePane Article="_article" OnClose="CloseAsync" OnToggleSaved="() => ToggleSavedAsync(_article.ArticleId)" OnToggleRead="() => ToggleReadAsync(_article.ArticleId)"
+                     OnLoadFullText="LoadFullTextAsync" FullTextLoading="_fullTextLoading" FullTextError="@_fullTextError">
             <BoardPicker UserId="_userId" ArticleId="_article.ArticleId" OnChanged="ReloadNavAndRenderAsync" />
         </ArticlePane>
     }
@@ -161,6 +163,8 @@
     private AddSource? _addSource;
     private bool _loading = true;
     private bool _loadingMore;
+    private bool _fullTextLoading;
+    private string? _fullTextError;
     private bool _navOpen;
     private bool _listChanged;
     private string? _focusAfterRender;
@@ -445,6 +449,41 @@
         }
 
         _focusAfterRender = "#pane-title";
+        _fullTextError = null;
+
+        if (_article.AlwaysFullText && _article.FullTextHtml is null && _article.Url is not null)
+        {
+            await LoadFullTextAsync();
+        }
+    }
+
+    private async Task LoadFullTextAsync()
+    {
+        // A second click arrives while the first is still fetching (PLAN D50).
+        if (_fullTextLoading || _article is not { } article)
+        {
+            return;
+        }
+
+        _fullTextLoading = true;
+        _fullTextError = null;
+        StateHasChanged();
+        try
+        {
+            var result = await FullText.GetAsync(_userId, article.ArticleId, _disposed.Token);
+            if (_article?.ArticleId == article.ArticleId)
+            {
+                _fullTextError = result.Error;
+                if (result.Html is not null)
+                {
+                    _article = _article with { FullTextHtml = result.Html };
+                }
+            }
+        }
+        finally
+        {
+            _fullTextLoading = false;
+        }
     }
 
     private Task CloseAsync()

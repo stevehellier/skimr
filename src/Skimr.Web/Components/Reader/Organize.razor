@@ -92,6 +92,7 @@
                 <input id="@($"title-{source.SubscriptionId}")" value="@source.CustomTitle" maxlength="500" @onchange="e => _edits[source.SubscriptionId].Title = (string?)e.Value" />
                 <label for="@($"interval-{source.SubscriptionId}")">Refresh every (minutes, 5–1440; blank for the default)</label>
                 <input id="@($"interval-{source.SubscriptionId}")" type="number" min="5" max="1440" value="@source.RefreshMinutes" @onchange="e => _edits[source.SubscriptionId].Interval = (string?)e.Value" />
+                <label class="check"><input type="checkbox" checked="@source.AlwaysFullText" @onchange="e => _edits[source.SubscriptionId].AlwaysFullText = (bool)e.Value!" /> Always load the full article when I open one</label>
                 @if (_folders.Count > 0)
                 {
                     <fieldset class="choices">
@@ -161,6 +162,7 @@
                 Title = source.CustomTitle,
                 Interval = source.RefreshMinutes?.ToString(),
                 Folders = source.FolderIds.ToHashSet(),
+                AlwaysFullText = source.AlwaysFullText,
             };
         }
     }
@@ -303,7 +305,7 @@
             interval = minutes;
         }
 
-        Show(await Library.UpdateSourceAsync(_userId, subscriptionId, edit.Title, interval, edit.Folders, CancellationToken.None), "Source saved.");
+        Show(await Library.UpdateSourceAsync(_userId, subscriptionId, edit.Title, interval, edit.Folders, CancellationToken.None, edit.AlwaysFullText), "Source saved.");
         await LoadAsync();
     }
 
@@ -339,5 +341,7 @@
         public string? Interval { get; set; }
 
         public HashSet<long> Folders { get; init; } = [];
+
+        public bool AlwaysFullText { get; set; }
     }
 }

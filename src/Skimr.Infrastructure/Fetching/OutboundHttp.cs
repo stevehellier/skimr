@@ -17,7 +17,8 @@ internal sealed record FetchResponse(
     TimeSpan? MaxAge,
     TimeSpan? RetryAfter,
     string? HubUrl,
-    string? SelfUrl)
+    string? SelfUrl,
+    string? Charset = null)
 {
     public bool IsSuccess => (int)Status is >= 200 and < 300;
 }
@@ -93,7 +94,8 @@ internal sealed partial class OutboundHttp(IHttpClientFactory clientFactory, Fet
                 MaxAge: response.Headers.CacheControl?.MaxAge,
                 RetryAfter: RetryAfter(response.Headers.RetryAfter),
                 HubUrl: LinkRel(links, "hub"),
-                SelfUrl: LinkRel(links, "self"));
+                SelfUrl: LinkRel(links, "self"),
+                Charset: response.Content.Headers.ContentType?.CharSet?.Trim('"'));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {

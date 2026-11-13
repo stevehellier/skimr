@@ -23,6 +23,7 @@ public sealed record SourceDetails(
     string? CustomTitle,
     int? RefreshMinutes,
     IReadOnlyList<long> FolderIds,
+    bool AlwaysFullText,
     DateTime? LastSuccessAt,
     DateTime? LastErrorAt,
     string? LastError,
@@ -130,7 +131,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
     }
 
     public async Task<LibraryResult> UpdateSourceAsync(
-        Guid userId, long subscriptionId, string? customTitle, int? refreshMinutes, IReadOnlyCollection<long> folderIds, CancellationToken cancellationToken)
+        Guid userId, long subscriptionId, string? customTitle, int? refreshMinutes, IReadOnlyCollection<long> folderIds, CancellationToken cancellationToken, bool? alwaysFullText = null)
     {
         if (refreshMinutes is { } minutes && (minutes < FetchOptions.MinIntervalMinutes || minutes > 24 * 60))
         {
@@ -146,6 +147,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
 
         subscription.CustomTitle = StoredText.Fit(string.IsNullOrWhiteSpace(customTitle) ? null : customTitle.Trim(), 500);
         subscription.RefreshMinutes = refreshMinutes;
+        subscription.AlwaysFetchFullText = alwaysFullText ?? subscription.AlwaysFetchFullText;
 
         var wanted = folderIds.ToHashSet();
         subscription.Folders.RemoveAll(f => !wanted.Contains(f.FolderId));
@@ -204,6 +206,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
                 s.CustomTitle,
                 s.RefreshMinutes,
                 s.Folders.Select(f => f.FolderId).ToList(),
+                s.AlwaysFetchFullText,
                 s.Feed.LastSuccessAt,
                 s.Feed.LastErrorAt,
                 s.Feed.LastError,

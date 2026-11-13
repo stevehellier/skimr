@@ -35,6 +35,7 @@ public static class InfrastructureServices
         services.AddScoped<Reading.LibraryService>();
         services.AddScoped<Reading.BoardService>();
         services.AddScoped<Reading.OpmlService>();
+        services.AddScoped<Reading.FullTextService>();
         services.AddScoped<Reading.RetentionService>();
         services.AddHostedService<Reading.RetentionWorker>();
         services.AddHostedService(sp => sp.GetRequiredService<FeedScheduler>());

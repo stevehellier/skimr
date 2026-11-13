@@ -52,7 +52,9 @@ public sealed record ArticleDetail(
     DateTime PublishedAt,
     string ContentHtml,
     bool IsRead,
-    bool IsSaved);
+    bool IsSaved,
+    string? FullTextHtml = null,
+    bool AlwaysFullText = false);
 
 /// <summary>
 /// Everything the reader shows and changes. Every query and update is filtered by the signed-in
@@ -231,7 +233,9 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, I
                 u.PublishedAt,
                 u.Article.ContentHtml ?? "",
                 u.IsRead,
-                u.IsSaved))
+                u.IsSaved,
+                u.Article.FullTextHtml,
+                db.Subscriptions.Any(s => s.UserId == userId && s.FeedId == u.FeedId && s.AlwaysFetchFullText)))
             .AsNoTracking()
             .SingleOrDefaultAsync(cancellationToken);
     }

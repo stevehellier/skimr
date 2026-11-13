@@ -9,6 +9,7 @@
     <PackageReference Include="System.ServiceModel.Syndication" />
     <PackageReference Include="HtmlSanitizer" />
     <PackageReference Include="AngleSharp" />
+    <PackageReference Include="SmartReader" />
   </ItemGroup>
   <ItemGroup>
     <!-- Skimr is the Web project's assembly name. -->
