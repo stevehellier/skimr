@@ -166,6 +166,10 @@ namespace Skimr.Infrastructure.Postgres.Migrations
                     b.Property<DateTime?>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("FeverKeyHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<DateTime?>("LastUsedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -188,6 +192,9 @@ namespace Skimr.Infrastructure.Postgres.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FeverKeyHash")
+                        .IsUnique();
 
                     b.HasIndex("TokenHash")
                         .IsUnique();

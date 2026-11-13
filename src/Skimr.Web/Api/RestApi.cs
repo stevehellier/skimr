@@ -93,7 +93,7 @@ internal static class RestApi
             .WithName("GetMe");
 
         api.MapGet("/tokens", async (ClaimsPrincipal user, ApiTokenService tokens, CancellationToken ct) =>
-            (await tokens.ListAsync(Uid(user), ct)).Select(t => new { t.Id, t.Name, t.Prefix, t.CreatedAt, t.LastUsedAt, t.ExpiresAt }))
+            (await tokens.ListAsync(Uid(user), ct)).Select(t => new { t.Id, t.Name, t.Prefix, t.CreatedAt, t.LastUsedAt, t.ExpiresAt, feverEnabled = t.FeverKeyHash != null }))
             .WithName("ListTokens");
 
         api.MapPost("/tokens", async (TokenRequest request, ClaimsPrincipal user, ApiTokenService tokens, CancellationToken ct) =>

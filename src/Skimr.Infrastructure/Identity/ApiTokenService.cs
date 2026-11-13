@@ -18,12 +18,15 @@ internal sealed class ApiTokenService(SkimrDbContext db, TimeProvider time)
     {
         var now = time.GetUtcNow().UtcDateTime;
         var plain = Secrets.NewToken(Prefix);
+        // Fever clients sign in with md5("UserName:password"); the token is the password (PLAN D61).
+        var userName = await db.Users.Where(u => u.Id == userId).Select(u => u.UserName).SingleAsync(cancellationToken);
         var token = new ApiToken
         {
             UserId = userId,
             Name = StoredText.Fit(string.IsNullOrWhiteSpace(name) ? "Token" : name.Trim(), 100)!,
             Prefix = plain[..12],
             TokenHash = Secrets.Hash(plain),
+            FeverKeyHash = Secrets.Hash(Secrets.FeverKey(userName!, plain)),
             CreatedAt = now,
             ExpiresAt = expiresInDays is > 0 ? now.AddDays(expiresInDays.Value) : null,
         };
@@ -48,8 +51,25 @@ internal sealed class ApiTokenService(SkimrDbContext db, TimeProvider time)
         }
 
         var hash = Secrets.Hash(plain);
-        var token = await db.ApiTokens
-            .Where(t => t.TokenHash == hash)
+        return await CheckAsync(db.ApiTokens.Where(t => t.TokenHash == hash), cancellationToken);
+    }
+
+    /// <summary>Like <see cref="ValidateAsync"/>, for a Fever api_key (32 hex characters, any case).</summary>
+    public async Task<(Guid UserId, long TokenId)?> ValidateFeverKeyAsync(string apiKey, CancellationToken cancellationToken)
+    {
+        var key = apiKey.Trim().ToLowerInvariant();
+        if (key.Length != 32 || !key.All(char.IsAsciiHexDigitLower))
+        {
+            return null;
+        }
+
+        var hash = Secrets.Hash(key);
+        return await CheckAsync(db.ApiTokens.Where(t => t.FeverKeyHash == hash), cancellationToken);
+    }
+
+    private async Task<(Guid UserId, long TokenId)?> CheckAsync(IQueryable<ApiToken> match, CancellationToken cancellationToken)
+    {
+        var token = await match
             .Select(t => new { t.Id, t.UserId, t.ExpiresAt, t.LastUsedAt })
             .SingleOrDefaultAsync(cancellationToken);
         var now = time.GetUtcNow().UtcDateTime;

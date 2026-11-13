@@ -31,7 +31,8 @@ public sealed record SourceDetails(
     DateTime? LastErrorAt,
     string? LastError,
     int ConsecutiveFailures,
-    DateTime NextFetchAt);
+    DateTime NextFetchAt,
+    long? IconId = null);
 
 public sealed record FolderDetails(long Id, string Name, int SortOrder);
 
@@ -214,7 +215,8 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
                 s.Feed.LastErrorAt,
                 s.Feed.LastError,
                 s.Feed.ConsecutiveFailures,
-                s.Feed.NextFetchAt))
+                s.Feed.NextFetchAt,
+                s.Feed.IconId))
             .AsNoTracking()
             .ToListAsync(cancellationToken);
         return rows;

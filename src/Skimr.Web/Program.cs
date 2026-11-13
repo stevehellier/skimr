@@ -141,6 +141,7 @@ app.MapStaticAssets().AllowAnonymous();
 app.MapAccountEndpoints();
 app.MapRestApi();
 app.MapGoogleReaderApi();
+app.MapFeverApi();
 app.MapApiDocs();
 app.MapReaderEndpoints();
 

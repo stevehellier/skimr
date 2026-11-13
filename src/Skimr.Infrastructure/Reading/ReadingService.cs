@@ -431,6 +431,43 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, I
         return new ArticleRefPage(rows.Take(limit).ToList(), next);
     }
 
+    /// <summary>
+    /// Ids from subscribed sources, paged by id as Fever does: ascending after <paramref name="sinceId"/>,
+    /// otherwise descending below <paramref name="maxId"/> (or from the newest).
+    /// </summary>
+    public async Task<IReadOnlyList<long>> GetArticleIdsByIdAsync(Guid userId, long? sinceId, long? maxId, int limit, CancellationToken cancellationToken)
+    {
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        var query = await InViewAsync(db, userId, ReaderView.All, cancellationToken);
+        if (sinceId is { } since)
+        {
+            return await query.Where(u => u.ArticleId > since).OrderBy(u => u.ArticleId).Take(limit).Select(u => u.ArticleId).ToListAsync(cancellationToken);
+        }
+
+        if (maxId is { } max)
+        {
+            query = query.Where(u => u.ArticleId < max);
+        }
+
+        return await query.OrderByDescending(u => u.ArticleId).Take(limit).Select(u => u.ArticleId).ToListAsync(cancellationToken);
+    }
+
+    /// <summary>Every unread id from subscribed sources, or every saved id (Read Later keeps dropped sources' articles).</summary>
+    public async Task<IReadOnlyList<long>> GetAllArticleIdsAsync(Guid userId, SyncFilter filter, CancellationToken cancellationToken)
+    {
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        var rows = filter.Saved == true
+            ? db.UserArticles.Where(u => u.UserId == userId)
+            : await InViewAsync(db, userId, ReaderView.All, cancellationToken);
+        return await Filter(rows, filter).Select(u => u.ArticleId).ToListAsync(cancellationToken);
+    }
+
+    public async Task<int> CountAsync(Guid userId, ReaderView view, CancellationToken cancellationToken)
+    {
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        return await (await InViewAsync(db, userId, view, cancellationToken)).CountAsync(cancellationToken);
+    }
+
     /// <summary>The user's articles among <paramref name="articleIds"/>, newest first; other ids are ignored.</summary>
     public async Task<IReadOnlyList<SyncItem>> GetSyncItemsAsync(Guid userId, IReadOnlyCollection<long> articleIds, CancellationToken cancellationToken)
     {

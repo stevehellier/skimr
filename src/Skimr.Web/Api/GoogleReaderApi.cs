@@ -625,7 +625,7 @@ internal static partial class GoogleReaderApi
         usec is >= 0 and <= 253_402_300_799_999_999 ? DateTime.UnixEpoch.AddTicks(usec * 10) : null;
 
     /// <summary>Query string plus form body (clients use both), capped at 1 MB. Null if larger.</summary>
-    private static async Task<IFormCollection?> ParamsAsync(HttpContext context)
+    internal static async Task<IFormCollection?> ParamsAsync(HttpContext context)
     {
         var request = context.Request;
         var values = new Dictionary<string, StringValues>(StringComparer.Ordinal);

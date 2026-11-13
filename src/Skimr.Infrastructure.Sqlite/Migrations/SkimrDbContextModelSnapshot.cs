@@ -155,6 +155,10 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                     b.Property<DateTime?>("ExpiresAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("FeverKeyHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("LastUsedAt")
                         .HasColumnType("TEXT");
 
@@ -177,6 +181,9 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FeverKeyHash")
+                        .IsUnique();
 
                     b.HasIndex("TokenHash")
                         .IsUnique();
