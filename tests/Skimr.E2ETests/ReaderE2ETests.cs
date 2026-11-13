@@ -186,10 +186,40 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         await Assertions.Expect(page).ToHaveURLAsync(new Regex("/saved$"));
         await Assertions.Expect(page.Locator(".article-item")).ToHaveCountAsync(1);
 
+        // ---- Search ------------------------------------------------------------------------
+        await page.Locator("body").PressAsync("/");
+        (await ActiveElementIdAsync(page)).Should().Be("search-box", "/ focuses search");
+        await page.Keyboard.TypeAsync("story 2");
+        await page.Keyboard.PressAsync("Enter");
+        await Assertions.Expect(page).ToHaveURLAsync(new Regex("/search\\?q=story%202$"));
+        await Assertions.Expect(page.Locator(".article-item .title")).ToHaveTextAsync(["Local story 2"]);
+
+        await page.FillAsync("#search-box", "story 3");
+        await page.PressAsync("#search-box", "Enter");
+        await Assertions.Expect(page.Locator(".article-item .title")).ToHaveTextAsync(["Local story 3"]);
+
+        await page.FillAsync("#search-box", "\"NEAR( -AND");
+        await page.PressAsync("#search-box", "Enter");
+        await Assertions.Expect(page.Locator(".empty")).ToContainTextAsync("No articles match");
+
+        // ---- Boards ------------------------------------------------------------------------
+        await page.FillAsync("#search-box", "story 3");
+        await page.PressAsync("#search-box", "Enter");
+        await page.ClickAsync("button.open");
+        await page.ClickAsync(".board-picker summary");
+        await page.FillAsync("#new-board", "Keepers");
+        await page.ClickAsync(".board-picker button[type=submit]");
+        await Assertions.Expect(page.Locator(".board-picker input[type=checkbox]")).ToBeCheckedAsync();
+        await Assertions.Expect(page.Locator("a.nav-link", new() { HasText = "Keepers" })).ToBeVisibleAsync();
+        await page.ClickAsync("a.nav-link >> text=Keepers");
+        await Assertions.Expect(page).ToHaveURLAsync(new Regex("/board/\\d+$"));
+        await Assertions.Expect(page.Locator(".article-item .title")).ToHaveTextAsync(["Local story 3"]);
+        await ShotAsync(page, "desktop-board");
+
         // ---- Mark all read ---------------------------------------------------------------
         await page.GotoAsync(_baseUrl);
-        // Unread only: story 2 was read on the way past with j/k.
-        await Assertions.Expect(page.Locator(".article-item")).ToHaveCountAsync(2);
+        // Unread only: story 2 was read on the way past with j/k, story 3 when opened from search.
+        await Assertions.Expect(page.Locator(".article-item")).ToHaveCountAsync(1);
         await page.Locator("body").PressAsync("Shift+A");
         await Assertions.Expect(page.Locator("#mark-all-dialog")).ToBeVisibleAsync();
         await page.ClickAsync("#mark-all-dialog >> text=Everything");

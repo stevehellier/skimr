@@ -41,6 +41,17 @@
         </ul>
     }
 
+    @if (Nav.BoardList.Count > 0)
+    {
+        <h2 class="nav-heading">Boards</h2>
+        <ul class="nav-list sources" role="list">
+            @foreach (var board in Nav.BoardList)
+            {
+                <li>@Link($"board/{board.Id}", board.Name, board.Count, ReaderView.Board(board.Id), "articles")</li>
+            }
+        </ul>
+    }
+
     <div class="nav-actions">
         <button type="button" class="secondary" @onclick="OnAddSource">+ Add source</button>
         <a href="organize">Organise</a>

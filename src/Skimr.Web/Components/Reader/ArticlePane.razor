@@ -16,6 +16,8 @@
         }
     </div>
 
+    @ChildContent
+
     <article class="article-view">
         <header>
             <h2 id="pane-title" tabindex="-1">@Article.Title</h2>
@@ -45,4 +47,8 @@
 
     [Parameter]
     public EventCallback OnToggleRead { get; set; }
+
+    /// <summary>Extra controls shown above the article (the board picker).</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
 }

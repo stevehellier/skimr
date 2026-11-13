@@ -3,6 +3,8 @@
 @page "/saved"
 @page "/folder/{FolderId:long}"
 @page "/source/{SourceId:long}"
+@page "/board/{BoardId:long}"
+@page "/search"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IAsyncDisposable
 @using System.Security.Claims
@@ -29,6 +31,10 @@
                 <span aria-hidden="true">☰</span><span class="visually-hidden">Show feeds</span>
             </button>
             <h1 id="view-title" tabindex="-1">@Title</h1>
+            <form class="search-form" role="search" @onsubmit="SubmitSearch">
+                <label class="visually-hidden" for="search-box">Search articles</label>
+                <input id="search-box" type="search" maxlength="200" placeholder="Search (/)" @bind="_searchInput" />
+            </form>
             <div class="toolbar-actions">
                 <div role="group" aria-label="Layout" class="segmented">
                     @foreach (var layout in Enum.GetValues<ArticleLayout>())
@@ -41,7 +47,7 @@
                     <option value="@ArticleSort.Newest">Newest first</option>
                     <option value="@ArticleSort.Oldest">Oldest first</option>
                 </select>
-                @if (_view.Kind != ViewKind.Saved)
+                @if (_view.Kind is not (ViewKind.Saved or ViewKind.Board or ViewKind.Search))
                 {
                     <label class="check"><input type="checkbox" checked="@_preference.UnreadOnly" @onchange="SetUnreadOnlyAsync" /> Unread only</label>
                     <button type="button" class="secondary" @onclick="OpenMarkAllAsync" title="Mark all as read (Shift+A)">Mark all read</button>
@@ -49,6 +55,39 @@
                 <button type="button" class="icon" @onclick="ShowHelpAsync" title="Keyboard shortcuts (?)"><span aria-hidden="true">?</span><span class="visually-hidden">Keyboard shortcuts</span></button>
             </div>
         </div>
+
+        @if (_view.Kind == ViewKind.Search)
+        {
+            <div class="search-filters" role="group" aria-label="Search filters">
+                <label>Source
+                    <select value="@SearchSource" @onchange="e => SetSearchFilter(source: e.Value as string)">
+                        <option value="">Any</option>
+                        @foreach (var s in _nav.Folders.SelectMany(f => f.Sources).Concat(_nav.Unfiled).DistinctBy(s => s.SubscriptionId).OrderBy(s => s.Title))
+                        {
+                            <option value="@s.SubscriptionId">@s.Title</option>
+                        }
+                    </select>
+                </label>
+                <label>Folder
+                    <select value="@SearchFolder" @onchange="e => SetSearchFilter(folder: e.Value as string)">
+                        <option value="">Any</option>
+                        @foreach (var f in _nav.Folders)
+                        {
+                            <option value="@f.Id">@f.Name</option>
+                        }
+                    </select>
+                </label>
+                <label>From <input type="date" value="@SearchFrom" @onchange="e => SetSearchFilter(from: e.Value as string)" /></label>
+                <label>To <input type="date" value="@SearchTo" @onchange="e => SetSearchFilter(to: e.Value as string)" /></label>
+                <label>Show
+                    <select value="@(SearchRead ?? "")" @onchange="e => SetSearchFilter(read: e.Value as string)">
+                        <option value="">Read and unread</option>
+                        <option value="unread">Unread</option>
+                        <option value="read">Read</option>
+                    </select>
+                </label>
+            </div>
+        }
 
         @if (_loading)
         {
@@ -68,7 +107,9 @@
 
     @if (_article is not null)
     {
-        <ArticlePane Article="_article" OnClose="CloseAsync" OnToggleSaved="() => ToggleSavedAsync(_article.ArticleId)" OnToggleRead="() => ToggleReadAsync(_article.ArticleId)" />
+        <ArticlePane Article="_article" OnClose="CloseAsync" OnToggleSaved="() => ToggleSavedAsync(_article.ArticleId)" OnToggleRead="() => ToggleReadAsync(_article.ArticleId)">
+            <BoardPicker UserId="_userId" ArticleId="_article.ArticleId" OnChanged="ReloadNavAndRenderAsync" />
+        </ArticlePane>
     }
 </div>
 
@@ -94,10 +135,11 @@
             <tr><th scope="row"><kbd>Shift</kbd>+<kbd>A</kbd></th><td>Mark all as read</td></tr>
             <tr><th scope="row"><kbd>g</kbd> then <kbd>a</kbd> / <kbd>t</kbd> / <kbd>s</kbd></th><td>Go to All / Today / Read Later</td></tr>
             <tr><th scope="row"><kbd>Esc</kbd></th><td>Close the article or dialog</td></tr>
+            <tr><th scope="row"><kbd>/</kbd></th><td>Search</td></tr>
             <tr><th scope="row"><kbd>?</kbd></th><td>This help</td></tr>
         </tbody>
     </table>
-    <p class="hint"><kbd>/</kbd> to search arrives with search.</p>
+    
     <div class="dialog-actions"><button type="button" @onclick="@(() => CloseDialogAsync("help-dialog"))">Close</button></div>
 </dialog>
 
@@ -108,7 +150,7 @@
 @code {
     private Guid _userId;
     private ReaderView _view;
-    private ReaderView? _loadedView;
+    private string? _loadedKey;
     private ViewPreference _preference = new() { ViewKey = "all" };
     private MarkReadMode _markMode;
     private NavModel _nav = NavModel.Empty;
@@ -136,20 +178,85 @@
     [Parameter]
     public long? SourceId { get; set; }
 
+    [Parameter]
+    public long? BoardId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "q")]
+    public string? SearchText { get; set; }
+
+    [SupplyParameterFromQuery(Name = "source")]
+    public string? SearchSource { get; set; }
+
+    [SupplyParameterFromQuery(Name = "folder")]
+    public string? SearchFolder { get; set; }
+
+    [SupplyParameterFromQuery(Name = "from")]
+    public string? SearchFrom { get; set; }
+
+    [SupplyParameterFromQuery(Name = "to")]
+    public string? SearchTo { get; set; }
+
+    [SupplyParameterFromQuery(Name = "read")]
+    public string? SearchRead { get; set; }
+
+    private string _searchInput = "";
+
     private string Title => _view.Kind switch
     {
         ViewKind.All => "All",
         ViewKind.Today => "Today",
         ViewKind.Saved => "Read Later",
         ViewKind.Folder => _nav.Folders.FirstOrDefault(f => f.Id == _view.Id)?.Name ?? "Folder",
+        ViewKind.Board => _nav.BoardList.FirstOrDefault(b => b.Id == _view.Id)?.Name ?? "Board",
+        ViewKind.Search => $"Search: {SearchText}",
         _ => _nav.Folders.SelectMany(f => f.Sources).Concat(_nav.Unfiled).FirstOrDefault(s => s.SubscriptionId == _view.Id)?.Title ?? "Source",
     };
 
-    private string EmptyText => _view.Kind == ViewKind.Saved
-        ? "Nothing saved. Press s on an article to read it later."
-        : _nav.Folders.Count == 0 && _nav.Unfiled.Count == 0
-            ? "No sources yet. Use “+ Add source” to subscribe to a site or feed."
-            : _preference.UnreadOnly ? "All caught up." : "Nothing here yet. New articles appear after the next fetch.";
+    private string EmptyText => _view.Kind switch
+    {
+        ViewKind.Saved => "Nothing saved. Press s on an article to read it later.",
+        ViewKind.Board => "This board is empty. Open an article and tick this board to add it.",
+        ViewKind.Search => string.IsNullOrWhiteSpace(SearchText) ? "Type in the search box and press Enter." : "No articles match.",
+        _ when _nav.Folders.Count == 0 && _nav.Unfiled.Count == 0 => "No sources yet. Use “+ Add source” to subscribe to a site or feed.",
+        _ => _preference.UnreadOnly ? "All caught up." : "Nothing here yet. New articles appear after the next fetch.",
+    };
+
+    /// <summary>Search filters from the query string. Ids are checked against the user by the service.</summary>
+    private SearchQuery CurrentSearch() => new(
+        SearchText ?? "",
+        long.TryParse(SearchSource, out var source) ? source : null,
+        long.TryParse(SearchFolder, out var folder) ? folder : null,
+        DateTime.TryParseExact(SearchFrom, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var from) ? from : null,
+        DateTime.TryParseExact(SearchTo, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var to) ? to.AddDays(1) : null,
+        SearchRead switch { "unread" => ReadFilter.Unread, "read" => ReadFilter.Read, _ => ReadFilter.Any });
+
+    private void SubmitSearch()
+    {
+        var text = _searchInput.Trim();
+        if (text.Length > 0)
+        {
+            Navigation.NavigateTo($"search?q={Uri.EscapeDataString(text)}");
+        }
+    }
+
+    private void SetSearchFilter(string? source = null, string? folder = null, string? from = null, string? to = null, string? read = null)
+    {
+        var parameters = new Dictionary<string, object?>
+        {
+            ["q"] = SearchText,
+            ["source"] = source ?? SearchSource,
+            ["folder"] = folder ?? SearchFolder,
+            ["from"] = from ?? SearchFrom,
+            ["to"] = to ?? SearchTo,
+            ["read"] = read ?? SearchRead,
+        };
+        foreach (var key in parameters.Where(p => p.Value is "").Select(p => p.Key).ToList())
+        {
+            parameters[key] = null;
+        }
+
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameters(parameters));
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -164,13 +271,18 @@
         var path = Navigation.ToBaseRelativePath(Navigation.Uri).Split('?')[0].TrimEnd('/');
         _view = FolderId is { } folder ? ReaderView.Folder(folder)
             : SourceId is { } source ? ReaderView.Source(source)
+            : BoardId is { } board ? ReaderView.Board(board)
             : path == "today" ? ReaderView.Today
             : path == "saved" ? ReaderView.Saved
+            : path == "search" ? ReaderView.Search
             : ReaderView.All;
 
-        if (_loadedView != _view)
+        // A search with different text or filters is a different list, though the view is the same.
+        var loadKey = _view.Kind == ViewKind.Search ? "search|" + Navigation.Uri : _view.Key;
+        if (_loadedKey != loadKey)
         {
-            _loadedView = _view;
+            _loadedKey = loadKey;
+            _searchInput = _view.Kind == ViewKind.Search ? SearchText ?? "" : "";
             _article = null;
             _navOpen = false;
             _loading = true;
@@ -222,13 +334,21 @@
 
     private async Task ReloadListAsync()
     {
-        var page = await Reading.GetArticlesAsync(_userId, _view, _preference.Sort, _preference.UnreadOnly, null, _disposed.Token);
+        var page = _view.Kind == ViewKind.Search
+            ? await Reading.SearchAsync(_userId, CurrentSearch(), null, _disposed.Token)
+            : await Reading.GetArticlesAsync(_userId, _view, _preference.Sort, _preference.UnreadOnly, null, _disposed.Token);
         _items = page.Items.ToList();
         _next = page.Next;
         _listChanged = true;
     }
 
     private async Task ReloadNavAsync() => _nav = await Reading.GetNavAsync(_userId, _disposed.Token);
+
+    private async Task ReloadNavAndRenderAsync()
+    {
+        await ReloadNavAsync();
+        StateHasChanged();
+    }
 
     private async Task LoadMoreAsync()
     {
@@ -240,7 +360,9 @@
         _loadingMore = true;
         try
         {
-            var page = await Reading.GetArticlesAsync(_userId, _view, _preference.Sort, _preference.UnreadOnly, _next, _disposed.Token);
+            var page = _view.Kind == ViewKind.Search
+                ? await Reading.SearchAsync(_userId, CurrentSearch(), _next, _disposed.Token)
+                : await Reading.GetArticlesAsync(_userId, _view, _preference.Sort, _preference.UnreadOnly, _next, _disposed.Token);
             _items.AddRange(page.Items.Where(i => _items.All(x => x.ArticleId != i.ArticleId)));
             _next = page.Next;
             _listChanged = true;

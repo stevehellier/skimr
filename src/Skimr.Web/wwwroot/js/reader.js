@@ -22,6 +22,17 @@ export function init(dotnetRef) {
     // An open dialog owns the keyboard (the browser closes it on Escape); don't also act on the page.
     if (document.querySelector("dialog[open]")) return;
 
+    // "/" focuses search here, without a round trip; preventDefault stops Firefox's find bar.
+    if (e.key === "/") {
+      const box = document.getElementById("search-box");
+      if (box) {
+        e.preventDefault();
+        box.focus();
+        box.select();
+      }
+      return;
+    }
+
     let key = e.key;
     if (key === "A" && e.shiftKey) key = "shift+a";
     else if (e.shiftKey && key !== "?") return;

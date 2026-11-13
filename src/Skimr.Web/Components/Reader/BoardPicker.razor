@@ -1,0 +1,110 @@
+@using Skimr.Infrastructure.Reading
+@inject BoardService Boards
+
+<details class="board-picker">
+    <summary>Boards@(_inBoards.Count > 0 ? $" ({_inBoards.Count})" : "")</summary>
+    <fieldset class="choices">
+        <legend class="visually-hidden">Add to boards</legend>
+        @foreach (var board in _boards)
+        {
+            <label class="check">
+                <input type="checkbox" checked="@_inBoards.Contains(board.Id)" disabled="@_busy" @onchange="e => ToggleAsync(board.Id, (bool)e.Value!)" />
+                @board.Name
+            </label>
+        }
+        <form class="inline-add" @onsubmit="CreateAsync">
+            <label class="visually-hidden" for="new-board">New board</label>
+            <input id="new-board" @bind="_newBoard" maxlength="100" placeholder="New board" />
+            <button type="submit" class="secondary" disabled="@_busy">Add</button>
+        </form>
+        @if (_error is not null)
+        {
+            <p class="alert error" role="alert">@_error</p>
+        }
+    </fieldset>
+</details>
+
+@code {
+    private IReadOnlyList<BoardDetails> _boards = [];
+    private IReadOnlySet<long> _inBoards = new HashSet<long>();
+    private string _newBoard = "";
+    private string? _error;
+    private bool _busy;
+    private long _loadedFor;
+
+    [Parameter, EditorRequired]
+    public Guid UserId { get; set; }
+
+    [Parameter, EditorRequired]
+    public long ArticleId { get; set; }
+
+    [Parameter]
+    public EventCallback OnChanged { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedFor != ArticleId)
+        {
+            _loadedFor = ArticleId;
+            _error = null;
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _boards = await Boards.ListAsync(UserId, CancellationToken.None);
+        _inBoards = await Boards.BoardsForArticleAsync(UserId, ArticleId, CancellationToken.None);
+    }
+
+    private async Task ToggleAsync(long boardId, bool add)
+    {
+        // A second click arrives while the first is still running (PLAN D50).
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = add
+                ? await Boards.AddAsync(UserId, boardId, ArticleId, CancellationToken.None)
+                : await Boards.RemoveAsync(UserId, boardId, ArticleId, CancellationToken.None);
+            _error = result.Error;
+            await LoadAsync();
+            await OnChanged.InvokeAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (_busy || string.IsNullOrWhiteSpace(_newBoard))
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var created = await Boards.CreateAsync(UserId, _newBoard, CancellationToken.None);
+            _error = created.Error;
+            if (created.Succeeded)
+            {
+                await Boards.AddAsync(UserId, created.Id!.Value, ArticleId, CancellationToken.None);
+                _newBoard = "";
+            }
+
+            await LoadAsync();
+            await OnChanged.InvokeAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}
