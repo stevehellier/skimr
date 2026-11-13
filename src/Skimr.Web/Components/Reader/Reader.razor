@@ -18,6 +18,7 @@
 
 <div class="reader @(_navOpen ? "nav-open" : null) @(_article is not null ? "pane-open" : null)">
     <aside class="reader-nav" id="reader-nav">
+        <button type="button" class="secondary nav-close" @onclick="() => _navOpen = false">Close</button>
         <NavPanel Nav="_nav" Current="_view" OnAddSource="OpenAddSourceAsync" />
     </aside>
 
@@ -176,6 +177,14 @@
             await Task.WhenAll(ReloadListAsync(), ReloadNavAsync());
             _loading = false;
             _focusAfterRender = "#view-title";
+
+            // A source that's empty is usually one just added: its first fetch runs in the
+            // background, so check back until articles arrive. (Navigating here creates a new
+            // instance of this page, so the subscribe handler can't do this itself.)
+            if (_view.Kind == ViewKind.Source && _items.Count == 0)
+            {
+                _ = WatchNewSourceAsync(_view);
+            }
         }
     }
 
@@ -392,16 +401,38 @@
         await ReloadNavAsync();
         Navigation.NavigateTo($"source/{subscriptionId}");
 
-        // The first fetch runs in the background; check back shortly so new articles appear.
-        _ = Task.Delay(TimeSpan.FromSeconds(3), _disposed.Token).ContinueWith(
-            _ => InvokeAsync(async () =>
+    }
+
+    private async Task WatchNewSourceAsync(ReaderView view)
+    {
+        try
+        {
+            for (var attempt = 0; attempt < 15; attempt++)
             {
-                await Task.WhenAll(ReloadListAsync(), ReloadNavAsync());
-                StateHasChanged();
-            }),
-            _disposed.Token,
-            TaskContinuationOptions.OnlyOnRanToCompletion,
-            TaskScheduler.Default);
+                await Task.Delay(TimeSpan.FromSeconds(2), _disposed.Token);
+                var done = false;
+                await InvokeAsync(async () =>
+                {
+                    if (_view != view)
+                    {
+                        done = true;
+                        return;
+                    }
+
+                    await Task.WhenAll(ReloadListAsync(), ReloadNavAsync());
+                    StateHasChanged();
+                    done = _items.Count > 0;
+                });
+                if (done)
+                {
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Circuit closed.
+        }
     }
 
     private async Task ShowDialogAsync(string id)

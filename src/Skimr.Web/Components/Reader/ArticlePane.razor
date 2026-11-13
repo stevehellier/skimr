@@ -23,9 +23,9 @@
                 <span class="source">@Article.SourceTitle</span>
                 @if (Article.Author is not null)
                 {
-                    <span>· @Article.Author</span>
+                    <span> · @Article.Author</span>
                 }
-                <span>· <time datetime="@Article.PublishedAt.ToString("O")">@Article.PublishedAt.ToString("d MMM yyyy HH:mm") UTC</time></span>
+                <span> · <time datetime="@Article.PublishedAt.ToString("O")">@Article.PublishedAt.ToString("d MMM yyyy HH:mm") UTC</time></span>
             </p>
         </header>
         @* Sanitised on ingest by ContentSanitizer; never render feed HTML that hasn't been. *@

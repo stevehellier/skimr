@@ -10,6 +10,7 @@
   --text: #1b1d21;
   --muted: #545a64;
   --border: #c9ced6;
+  --control-border: #7a808a;
   --accent: #1d6b41;
   --accent-text: #ffffff;
   --danger: #b0261d;
@@ -34,6 +35,7 @@
     --text: #e7e9ec;
     --muted: #a6adb7;
     --border: #3b4048;
+  --control-border: #80878f;
     --accent: #63c98f;
     --accent-text: #0b1a11;
     --danger: #f28b82;
@@ -54,6 +56,7 @@
   --text: #e7e9ec;
   --muted: #a6adb7;
   --border: #3b4048;
+  --control-border: #80878f;
   --accent: #63c98f;
   --accent-text: #0b1a11;
   --danger: #f28b82;
@@ -209,7 +212,7 @@ button {
 input:not([type="checkbox"], [type="radio"]),
 select {
   padding: 0.45rem 0.6rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius);
   background: var(--bg);
 }
@@ -236,7 +239,7 @@ button.secondary,
 a.button.secondary {
   background: transparent;
   color: var(--text);
-  border-color: var(--border);
+  border-color: var(--control-border);
 }
 
 button.danger {
@@ -449,7 +452,8 @@ table.shortcuts th {
   gap: 0.5rem;
 }
 
-.nav-toggle {
+.nav-toggle,
+.nav-close {
   display: none;
 }
 
@@ -836,8 +840,13 @@ table.shortcuts th {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .nav-toggle {
+  .nav-toggle,
+  .nav-close {
     display: inline-block;
+  }
+
+  .nav-close {
+    margin: 0 0 0.75rem 0.6rem;
   }
 
   .reader-nav {

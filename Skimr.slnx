@@ -8,6 +8,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Skimr.ComponentTests/Skimr.ComponentTests.csproj" />
+    <Project Path="tests/Skimr.E2ETests/Skimr.E2ETests.csproj" />
     <Project Path="tests/Skimr.IntegrationTests/Skimr.IntegrationTests.csproj" />
     <Project Path="tests/Skimr.UnitTests/Skimr.UnitTests.csproj" />
   </Folder>

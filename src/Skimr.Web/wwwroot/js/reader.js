@@ -19,7 +19,8 @@ export function init(dotnetRef) {
 
   keyHandler = (e) => {
     if (e.defaultPrevented || typing(e.target) || e.ctrlKey || e.altKey || e.metaKey) return;
-    if (document.querySelector("dialog[open]") && e.key !== "Escape") return;
+    // An open dialog owns the keyboard (the browser closes it on Escape); don't also act on the page.
+    if (document.querySelector("dialog[open]")) return;
 
     let key = e.key;
     if (key === "A" && e.shiftKey) key = "shift+a";
