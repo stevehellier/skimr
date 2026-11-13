@@ -58,6 +58,8 @@ export function init(dotnetRef) {
     }
   };
   document.addEventListener("keydown", keyHandler);
+  // Lets tests (and anything else) know shortcuts are live.
+  document.documentElement.dataset.readerReady = "";
 }
 
 /// Watches list items; anything scrolled up past the top of the viewport is reported as read.
@@ -133,6 +135,7 @@ export function getTheme() {
 
 export function dispose() {
   if (keyHandler) document.removeEventListener("keydown", keyHandler);
+  delete document.documentElement.dataset.readerReady;
   keyHandler = null;
   scrollObserver?.disconnect();
   endObserver?.disconnect();

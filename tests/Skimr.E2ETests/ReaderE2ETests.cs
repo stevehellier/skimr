@@ -110,6 +110,10 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
     private static Task ShotAsync(IPage page, string name) =>
         page.ScreenshotAsync(new PageScreenshotOptions { Path = Path.Combine(ScreenshotDirectory, name + ".png"), FullPage = false });
 
+    /// <summary>Keys pressed before reader.js is listening are lost; it sets this marker once it is.</summary>
+    private static Task ReaderReadyAsync(IPage page) =>
+        Assertions.Expect(page.Locator("html[data-reader-ready]")).ToHaveCountAsync(1);
+
     private static Task<string?> ActiveElementIdAsync(IPage page) => page.EvaluateAsync<string?>("() => document.activeElement?.id ?? null");
 
     [Fact]
@@ -158,6 +162,7 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         await ShotAsync(page, "desktop-list");
 
         // ---- Keyboard ----------------------------------------------------------------------
+        await ReaderReadyAsync(page);
         await page.Locator("body").PressAsync("j");
         await Assertions.Expect(page.Locator(".article-pane h2")).ToHaveTextAsync("Local story 1");
         (await ActiveElementIdAsync(page)).Should().Be("pane-title", "opening an article moves focus to it");
@@ -228,6 +233,7 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         await page.GotoAsync(_baseUrl);
         // Unread only: story 2 was read on the way past with j/k, story 3 when opened from search.
         await Assertions.Expect(page.Locator(".article-item")).ToHaveCountAsync(1);
+        await ReaderReadyAsync(page);
         await page.Locator("body").PressAsync("Shift+A");
         await Assertions.Expect(page.Locator("#mark-all-dialog")).ToBeVisibleAsync();
         await page.ClickAsync("#mark-all-dialog >> text=Everything");
@@ -385,6 +391,14 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         var page = await SignInAsync("leaver", new BrowserNewContextOptions { ServiceWorkers = ServiceWorkerPolicy.Block });
         await Assertions.Expect(page.Locator(".article-item")).ToHaveCountAsync(3, new() { Timeout = 20_000 });
 
+        // Listen for the redirect before disabling: revalidation (every second here) can beat the test.
+        var redirected = new TaskCompletionSource();
+        await page.RouteAsync("**/login**", async route =>
+        {
+            redirected.TrySetResult();
+            await route.AbortAsync();
+        });
+
         await using (var scope = _app.Services.CreateAsyncScope())
         {
             (await scope.ServiceProvider.GetRequiredService<AccountService>().SetDisabledAsync(adminId, userId, true, CancellationToken.None)).Succeeded.Should().BeTrue();
@@ -394,12 +408,6 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         // and the page can't act as the user any more. SignedOutCircuitGuardTests proves the
         // server drops a modified client's events even if it ignores the redirect.
         // The guard closes, then asks the browser to go to /login; wait for that attempt rather than a fixed time.
-        var redirected = new TaskCompletionSource();
-        await page.RouteAsync("**/login**", async route =>
-        {
-            redirected.TrySetResult();
-            await route.AbortAsync();
-        });
         await redirected.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
         await page.Locator("body").PressAsync("j");
         await page.WaitForTimeoutAsync(1_000);
