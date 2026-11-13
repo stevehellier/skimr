@@ -45,7 +45,10 @@ public sealed class FeedRefresherTests : IDisposable
     private async Task RefreshAsync()
     {
         await using var db = _db.Create();
-        var refresher = new FeedRefresher(db, _http, new ContentSanitizer(new ContentOptions()), new FetchOptions(), _time, NullLogger<FeedRefresher>.Instance);
+        var options = new FetchOptions();
+        var ingester = new ArticleIngester(db, new ContentSanitizer(new ContentOptions()));
+        var webSub = new WebSub(db, _http, ingester, options, _time, NullLogger<WebSub>.Instance);
+        var refresher = new FeedRefresher(db, _http, ingester, webSub, options, _time, NullLogger<FeedRefresher>.Instance);
         await refresher.RefreshAsync(_feedId, Ct);
     }
 

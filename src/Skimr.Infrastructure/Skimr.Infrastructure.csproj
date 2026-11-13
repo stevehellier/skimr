@@ -10,6 +10,8 @@
     <PackageReference Include="AngleSharp" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Skimr is the Web project's assembly name. -->
+    <InternalsVisibleTo Include="Skimr" />
     <InternalsVisibleTo Include="Skimr.UnitTests" />
     <InternalsVisibleTo Include="Skimr.IntegrationTests" />
   </ItemGroup>

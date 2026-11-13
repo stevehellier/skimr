@@ -25,6 +25,8 @@ public static class InfrastructureServices
         services.AddSingleton<ContentSanitizer>();
         services.AddSingleton<FeedDiscovery>();
 
+        services.AddScoped<ArticleIngester>();
+        services.AddScoped<WebSub>();
         services.AddScoped<FeedRefresher>();
         services.AddScoped<IFeedRefresher>(sp => sp.GetRequiredService<FeedRefresher>());
         services.AddSingleton<FeedScheduler>();
