@@ -31,6 +31,46 @@ public readonly record struct ReaderView(ViewKind Kind, long Id = 0)
 
     public static readonly ReaderView Search = new(ViewKind.Search);
 
+    /// <summary>Parses a <see cref="Key"/> ("all", "today", "saved", "folder:12", "source:34", "board:5").</summary>
+    public static bool TryParse(string? key, out ReaderView view)
+    {
+        view = All;
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return false;
+        }
+
+        var parts = key.Trim().ToLowerInvariant().Split(':', 2);
+        switch (parts)
+        {
+            case ["all"]:
+                return true;
+            case ["today"]:
+                view = Today;
+                return true;
+            case ["saved"]:
+                view = Saved;
+                return true;
+            case [var kind, var idText] when long.TryParse(idText, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id > 0:
+                switch (kind)
+                {
+                    case "folder":
+                        view = Folder(id);
+                        return true;
+                    case "source":
+                        view = Source(id);
+                        return true;
+                    case "board":
+                        view = Board(id);
+                        return true;
+                }
+
+                break;
+        }
+
+        return false;
+    }
+
     /// <summary>Stable key for remembered per-view settings: "all", "folder:12", "source:34".</summary>
     public string Key => Kind switch
     {

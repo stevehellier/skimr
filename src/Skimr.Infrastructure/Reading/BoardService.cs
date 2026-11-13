@@ -62,7 +62,7 @@ public sealed class BoardService(IDbContextFactory<SkimrDbContext> contexts, Tim
         var board = await db.Boards.SingleOrDefaultAsync(b => b.Id == boardId && b.UserId == userId, cancellationToken);
         if (board is null)
         {
-            return LibraryResult.Fail("Board not found.");
+            return LibraryResult.Missing("Board not found.");
         }
 
         board.Name = clean;
@@ -83,7 +83,7 @@ public sealed class BoardService(IDbContextFactory<SkimrDbContext> contexts, Tim
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         return await db.Boards.Where(b => b.Id == boardId && b.UserId == userId).ExecuteDeleteAsync(cancellationToken) > 0
             ? LibraryResult.Ok(boardId)
-            : LibraryResult.Fail("Board not found.");
+            : LibraryResult.Missing("Board not found.");
     }
 
     /// <summary>The ids of this user's boards that hold the article.</summary>
@@ -100,7 +100,7 @@ public sealed class BoardService(IDbContextFactory<SkimrDbContext> contexts, Tim
             && await db.UserArticles.AnyAsync(u => u.UserId == userId && u.ArticleId == articleId, cancellationToken);
         if (!allowed)
         {
-            return LibraryResult.Fail("Board or article not found.");
+            return LibraryResult.Missing("Board or article not found.");
         }
 
         if (await db.BoardArticles.AnyAsync(ba => ba.BoardId == boardId && ba.ArticleId == articleId, cancellationToken))
@@ -124,7 +124,12 @@ public sealed class BoardService(IDbContextFactory<SkimrDbContext> contexts, Tim
     public async Task<LibraryResult> RemoveAsync(Guid userId, long boardId, long articleId, CancellationToken cancellationToken)
     {
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
-        await db.BoardArticles.Where(ba => ba.BoardId == boardId && ba.ArticleId == articleId && ba.Board!.UserId == userId).ExecuteDeleteAsync(cancellationToken);
+        if (await db.BoardArticles.Where(ba => ba.BoardId == boardId && ba.ArticleId == articleId && ba.Board!.UserId == userId).ExecuteDeleteAsync(cancellationToken) == 0
+            && !await db.Boards.AnyAsync(b => b.Id == boardId && b.UserId == userId, cancellationToken))
+        {
+            return LibraryResult.Missing("Board not found.");
+        }
+
         return LibraryResult.Ok(boardId);
     }
 }

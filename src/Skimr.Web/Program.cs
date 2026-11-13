@@ -10,6 +10,7 @@ using Skimr.Infrastructure.Persistence;
 using Skimr.Infrastructure.Postgres;
 using Skimr.Infrastructure.Reading;
 using Skimr.Infrastructure.Sqlite;
+using Skimr.Web.Api;
 using Skimr.Web.Auth;
 using Skimr.Web.Components;
 using Skimr.Web.Configuration;
@@ -69,6 +70,9 @@ builder.Services.AddSingleton(new StorageOptions(settings.DataDirectory));
 builder.Services.AddSingleton(ImageProxyKey.LoadOrCreate(settings.DataDirectory));
 builder.Services.AddSingleton<IArticleSearch>(settings.Provider == DatabaseProvider.Postgres ? new PostgresArticleSearch() : new SqliteArticleSearch());
 builder.Services.AddSkimrAuth(settings);
+builder.Services.AddApiDocs();
+// API enums travel as names ("Oldest"), which the OpenAPI document then lists.
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
 
@@ -135,7 +139,8 @@ app.MapWebSub(settings.Fetch);
 app.MapStaticAssets().AllowAnonymous();
 
 app.MapAccountEndpoints();
-app.MapApi();
+app.MapRestApi();
+app.MapApiDocs();
 app.MapReaderEndpoints();
 
 app.MapRazorComponents<App>()
