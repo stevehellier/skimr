@@ -46,7 +46,7 @@ Only `deploy/docker-compose.yml` in an empty folder, Docker with an empty config
 
 | Step | Time |
 |---|---|
-| `up -d` to healthy | 9 s (image layers already cached from an anonymous pull of 0.1.1; a fresh machine downloads about 120 MB first) |
+| `up -d` to healthy | 9 s (image layers already cached from an anonymous pull of 0.1.1; a fresh machine downloads the image first: 252 MB unpacked) |
 | Setup done | 10.7 s |
 | OPML imported | 11.9 s |
 | First article open | 15.1 s |
