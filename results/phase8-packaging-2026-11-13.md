@@ -18,7 +18,7 @@ The one skip is `QuickStartTests`, which runs only against a live deployment (re
 |---|---|---|
 | Compose quick start under 2 minutes | `results/phase8-quickstart-2026-11-13.md`: SQLite 9.4 s from wizard to first article (18 s from `up`), Postgres 24.7 s; cold build 87 s | Pass (first build is extra: the registry is private) |
 | `sudo ./install.sh` on Debian/Ubuntu | `results/phase8-install-linux-2026-11-13.md`: Debian 12 with systemd; also the `install-linux` CI job on ubuntu-latest | Pass after the ICU fix |
-| Windows script | Parsed and dry-run (`-WhatIf`) in PowerShell 7 and Windows PowerShell 5.1 | **Elevated run pending (user)** |
+| Windows script | Parsed and dry-run (`-WhatIf`) in PowerShell 7 and Windows PowerShell 5.1; elevated run by the user on Windows 10 (below) | Pass |
 | Single-file builds | win-x64 run locally (health, setup page, all static assets); linux-x64 run under systemd | Pass; linux-arm64 and osx-arm64 build in the release workflow only |
 | Tag builds multi-arch image + 4 artefacts | `release.yml`, actionlint clean | **Runs when v0.1.0 is tagged** |
 
@@ -29,3 +29,15 @@ The one skip is `QuickStartTests`, which runs only against a live deployment (re
 2. Minimal Debian has no ICU, so the .NET runtime aborted. `install.sh` now installs `libicuNN` with apt.
 3. Compose projects took their name from the `deploy` folder (volume `deploy_skimr-data`); now pinned to
    `skimr` / `skimr-postgres` so the backup commands in the README are right.
+
+## Windows elevated run (user, Windows 10, 2026-11-13)
+
+From the staged win-x64 folder, `Set-ExecutionPolicy -Scope Process Bypass` then:
+
+| Step | Output |
+|---|---|
+| `.\install.ps1 -Port 9480` | "Skimr is running on http://localhost:9480"; setup code printed |
+| Service account | `NT SERVICE\Skimr` |
+| `icacls C:\ProgramData\Skimr` | `NT SERVICE\Skimr:(OI)(CI)(M)`, `BUILTIN\Administrators:(OI)(CI)(F)`, `NT AUTHORITY\SYSTEM:(OI)(CI)(F)`; nothing else |
+| `/health/ready` | 200 |
+| `.\install.ps1 -Uninstall -Purge` | "Skimr removed, including its data." |
