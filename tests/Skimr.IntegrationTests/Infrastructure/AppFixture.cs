@@ -37,6 +37,8 @@ public abstract class AppFixture : IAsyncLifetime
             ["Storage:DataDirectory"] = dataDirectory,
             // Tests drive fetching explicitly; the background scheduler would race them.
             ["Fetch:Enabled"] = "false",
+            // Tests call RetentionService directly.
+            ["Retention:Enabled"] = "false",
             // Login-heavy tests would otherwise trip each other's rate limit. RateLimitTests lowers it.
             ["Security:LoginAttemptsPerMinute"] = "10000",
         };

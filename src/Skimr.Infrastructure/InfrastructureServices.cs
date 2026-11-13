@@ -7,8 +7,9 @@ namespace Skimr.Infrastructure;
 
 public static class InfrastructureServices
 {
-    public static IServiceCollection AddSkimrInfrastructure(this IServiceCollection services, FetchOptions fetch, ContentOptions content)
+    public static IServiceCollection AddSkimrInfrastructure(this IServiceCollection services, FetchOptions fetch, ContentOptions content, Reading.RetentionOptions retention)
     {
+        services.AddSingleton(retention);
         services.AddSingleton(fetch);
         services.AddSingleton(content);
         services.AddSingleton(TimeProvider.System);
@@ -32,6 +33,9 @@ public static class InfrastructureServices
         services.AddSingleton<FeedScheduler>();
         services.AddScoped<Reading.ReadingService>();
         services.AddScoped<Reading.LibraryService>();
+        services.AddScoped<Reading.BoardService>();
+        services.AddScoped<Reading.RetentionService>();
+        services.AddHostedService<Reading.RetentionWorker>();
         services.AddHostedService(sp => sp.GetRequiredService<FeedScheduler>());
 
         return services;

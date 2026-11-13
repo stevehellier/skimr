@@ -7,6 +7,7 @@ using Skimr.Infrastructure;
 using Skimr.Infrastructure.Identity;
 using Skimr.Infrastructure.Persistence;
 using Skimr.Infrastructure.Postgres;
+using Skimr.Infrastructure.Reading;
 using Skimr.Infrastructure.Sqlite;
 using Skimr.Web.Auth;
 using Skimr.Web.Components;
@@ -62,7 +63,8 @@ builder.Services.AddDbContextFactory<SkimrDbContext>(options => _ = settings.Pro
     _ => throw new InvalidOperationException($"Unknown provider {settings.Provider}"),
 });
 
-builder.Services.AddSkimrInfrastructure(settings.Fetch, settings.Content);
+builder.Services.AddSkimrInfrastructure(settings.Fetch, settings.Content, settings.Retention);
+builder.Services.AddSingleton<IArticleSearch>(settings.Provider == DatabaseProvider.Postgres ? new PostgresArticleSearch() : new SqliteArticleSearch());
 builder.Services.AddSkimrAuth(settings);
 
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);

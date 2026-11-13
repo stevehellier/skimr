@@ -9,6 +9,8 @@ public enum ViewKind
     Saved,
     Folder,
     Source,
+    Board,
+    Search,
 }
 
 /// <summary>Which articles a list shows. <see cref="Id"/> is a folder id or a subscription id.</summary>
@@ -25,11 +27,16 @@ public readonly record struct ReaderView(ViewKind Kind, long Id = 0)
 
     public static ReaderView Source(long subscriptionId) => new(ViewKind.Source, subscriptionId);
 
+    public static ReaderView Board(long boardId) => new(ViewKind.Board, boardId);
+
+    public static readonly ReaderView Search = new(ViewKind.Search);
+
     /// <summary>Stable key for remembered per-view settings: "all", "folder:12", "source:34".</summary>
     public string Key => Kind switch
     {
         ViewKind.Folder => "folder:" + Id.ToString(CultureInfo.InvariantCulture),
         ViewKind.Source => "source:" + Id.ToString(CultureInfo.InvariantCulture),
+        ViewKind.Board => "board:" + Id.ToString(CultureInfo.InvariantCulture),
         _ => Kind.ToString().ToLowerInvariant(),
     };
 }

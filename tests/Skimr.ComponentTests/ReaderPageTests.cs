@@ -37,6 +37,7 @@ public sealed class ReaderPageTests : BunitContext
         Services.AddSingleton<FeedDiscovery>();
         Services.AddSingleton<FeedScheduler>();
         Services.AddSingleton(typeof(Microsoft.Extensions.Logging.ILogger<>), typeof(NullLogger<>));
+        Services.AddSingleton<IArticleSearch>(new Skimr.Infrastructure.Sqlite.SqliteArticleSearch());
         Services.AddScoped<ReadingService>();
         Services.AddScoped<LibraryService>();
 

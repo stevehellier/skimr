@@ -50,6 +50,7 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
             ["Database:Provider"] = "Sqlite",
             ["Storage:DataDirectory"] = _dataDirectory,
             ["Fetch:Enabled"] = "true",
+            ["Retention:Enabled"] = "false",
             // The feed server is on loopback; a home-lab user would set this too.
             ["Fetch:AllowPrivateNetworkFeeds"] = "true",
             ["Security:LoginAttemptsPerMinute"] = "1000",

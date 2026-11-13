@@ -10,4 +10,7 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Skimr.UnitTests" />
+  </ItemGroup>
 </Project>

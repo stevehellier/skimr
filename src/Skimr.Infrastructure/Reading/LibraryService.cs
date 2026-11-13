@@ -107,7 +107,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
         return LibraryResult.Ok(subscription.Id);
     }
 
-    /// <summary>Drops the subscription and its unread history. Saved articles stay in Read Later (PLAN D41).</summary>
+    /// <summary>Drops the subscription and its history. Saved and boarded articles stay (PLAN D41).</summary>
     public async Task<LibraryResult> UnsubscribeAsync(Guid userId, long subscriptionId, CancellationToken cancellationToken)
     {
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
@@ -118,7 +118,10 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
         }
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        await db.UserArticles.Where(u => u.UserId == userId && u.FeedId == subscription.FeedId && !u.IsSaved).ExecuteDeleteAsync(cancellationToken);
+        await db.UserArticles
+            .Where(u => u.UserId == userId && u.FeedId == subscription.FeedId && !u.IsSaved
+                && !db.BoardArticles.Any(b => b.ArticleId == u.ArticleId && b.Board!.UserId == userId))
+            .ExecuteDeleteAsync(cancellationToken);
         db.Subscriptions.Remove(subscription);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
