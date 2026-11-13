@@ -2,6 +2,9 @@
 #   docker compose -f deploy/docker-compose.yml up -d --build
 # Then open http://localhost:8080 and enter the setup code from:
 #   docker compose -f deploy/docker-compose.yml logs skimr | grep "setup code"
+# Fixed project name, so the volume is always skimr_skimr-data (see the README backup section).
+name: skimr
+
 services:
   skimr:
     # Built from this checkout (the image registry is private). With access to it, use

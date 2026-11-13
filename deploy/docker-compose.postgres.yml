@@ -1,6 +1,8 @@
 # Skimr with PostgreSQL 17.
 #   cp deploy/example.env deploy/.env      # then set POSTGRES_PASSWORD in deploy/.env
 #   docker compose -f deploy/docker-compose.postgres.yml up -d --build
+name: skimr-postgres
+
 services:
   skimr:
     build:
