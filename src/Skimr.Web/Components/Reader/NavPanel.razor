@@ -79,7 +79,11 @@
     }
 
     // The count is spoken as "7 unread" via hidden text; aria-label on a plain span is often ignored.
-    private RenderFragment Link(string href, string label, int count, ReaderView view, string countNoun = "unread") => @<a href="@href" class="nav-link @(view == Current ? "current" : null)" aria-current="@(view == Current ? "page" : null)">
+    private RenderFragment Link(string href, string label, int count, ReaderView view, string countNoun = "unread", long? iconId = null) => @<a href="@href" class="nav-link @(view == Current ? "current" : null)" aria-current="@(view == Current ? "page" : null)">
+        @if (iconId is { } icon)
+        {
+            <img class="favicon" src="@($"icons/{icon}")" alt="" width="16" height="16" loading="lazy" />
+        }
         <span class="label">@label</span>
         @if (count > 0)
         {
@@ -88,7 +92,7 @@
     </a>;
 
     private RenderFragment SourceLink(NavSource source) => @<span class="nav-source">
-        @Link($"source/{source.SubscriptionId}", source.Title, source.Unread, ReaderView.Source(source.SubscriptionId))
+        @Link($"source/{source.SubscriptionId}", source.Title, source.Unread, ReaderView.Source(source.SubscriptionId), iconId: source.IconId)
         @if (source.HasError)
         {
             <span class="source-error" title="This source failed on its last fetch"><span aria-hidden="true">!</span><span class="visually-hidden">Fetch error</span></span>

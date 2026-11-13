@@ -41,7 +41,8 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
             app.MapGet("/site", (HttpContext ctx) => Results.Content(
                 $"""<html><head><title>Local site</title><link rel="alternate" type="application/rss+xml" href="/feed.xml"></head><body>Hi</body></html>""",
                 "text/html"));
-            app.MapGet("/feed.xml", () => Results.Text(Rss(), "application/rss+xml"));
+            app.MapGet("/feed.xml", () => Results.Text(Rss(imageUrl: _feeds.Url("pic.png").AbsoluteUri), "application/rss+xml"));
+            app.MapGet("/pic.png", () => Results.Bytes(Convert.FromBase64String(OnePixelPng), "image/png"));
             app.MapGet("/big.xml", () => Results.Text(Rss(60, "Big"), "application/rss+xml"));
         });
 
@@ -81,11 +82,13 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         }
     }
 
-    private static string Rss(int count = 3, string name = "Local") =>
+    private const string OnePixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+    private static string Rss(int count = 3, string name = "Local", string? imageUrl = null) =>
         $"<rss version=\"2.0\"><channel><title>{name} Feed</title><link>http://127.0.0.1/</link>" +
         string.Concat(Enumerable.Range(1, count).Select(i =>
             $"<item><title>{name} story {i}</title><guid>{name}{i}</guid><link>https://example.com/{i}</link>" +
-            $"<pubDate>{DateTime.UtcNow.AddHours(-i):R}</pubDate><description>&lt;p&gt;Body {i}&lt;/p&gt;</description></item>")) +
+            $"<pubDate>{DateTime.UtcNow.AddHours(-i):R}</pubDate><description>&lt;p&gt;Body {i}&lt;/p&gt;{(i == 1 && imageUrl is not null ? $"&lt;img src=\"{imageUrl}\" alt=\"pixel\"&gt;" : "")}</description></item>")) +
         "</channel></rss>";
 
     private async Task<IPage> NewPageAsync(BrowserNewContextOptions? options = null)
@@ -158,6 +161,11 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         await page.Locator("body").PressAsync("j");
         await Assertions.Expect(page.Locator(".article-pane h2")).ToHaveTextAsync("Local story 1");
         (await ActiveElementIdAsync(page)).Should().Be("pane-title", "opening an article moves focus to it");
+
+        // The feed's http:// image loads through the proxy (same origin, so the CSP allows it).
+        var pixel = page.Locator(".article-body img");
+        (await pixel.GetAttributeAsync("src")).Should().StartWith("img/");
+        await Assertions.Expect(pixel).ToHaveJSPropertyAsync("naturalWidth", 1);
         await Assertions.Expect(page.Locator("a.nav-link[href=''] .count .n")).ToHaveTextAsync("2", new() { Timeout = 5_000 });
         await ShotAsync(page, "desktop-reading");
 

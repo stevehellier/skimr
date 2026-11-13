@@ -13,6 +13,7 @@
 @inject ReadingService Reading
 @inject LibraryService Library
 @inject FullTextService FullText
+@inject Skimr.Infrastructure.Content.ImageProxy Proxy
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 @inject TimeProvider Time
@@ -341,7 +342,7 @@
         var page = _view.Kind == ViewKind.Search
             ? await Reading.SearchAsync(_userId, CurrentSearch(), null, _disposed.Token)
             : await Reading.GetArticlesAsync(_userId, _view, _preference.Sort, _preference.UnreadOnly, null, _disposed.Token);
-        _items = page.Items.ToList();
+        _items = page.Items.Select(Proxied).ToList();
         _next = page.Next;
         _listChanged = true;
     }
@@ -367,7 +368,7 @@
             var page = _view.Kind == ViewKind.Search
                 ? await Reading.SearchAsync(_userId, CurrentSearch(), _next, _disposed.Token)
                 : await Reading.GetArticlesAsync(_userId, _view, _preference.Sort, _preference.UnreadOnly, _next, _disposed.Token);
-            _items.AddRange(page.Items.Where(i => _items.All(x => x.ArticleId != i.ArticleId)));
+            _items.AddRange(page.Items.Where(i => _items.All(x => x.ArticleId != i.ArticleId)).Select(Proxied));
             _next = page.Next;
             _listChanged = true;
         }
@@ -443,6 +444,13 @@
             return;
         }
 
+        // Images load through the proxy when it's on (PLAN D54); rewritten here, not at ingest.
+        _article = _article with
+        {
+            ContentHtml = Proxy.RewriteHtml(_article.ContentHtml),
+            FullTextHtml = _article.FullTextHtml is { } full ? Proxy.RewriteHtml(full) : null,
+        };
+
         if (_markMode != MarkReadMode.Manual && !_article.IsRead)
         {
             await SetReadAsync(articleId, true);
@@ -476,7 +484,7 @@
                 _fullTextError = result.Error;
                 if (result.Html is not null)
                 {
-                    _article = _article with { FullTextHtml = result.Html };
+                    _article = _article with { FullTextHtml = Proxy.RewriteHtml(result.Html) };
                 }
             }
         }
@@ -527,6 +535,8 @@
 
         await ReloadNavAsync();
     }
+
+    private ArticleListItem Proxied(ArticleListItem item) => item with { ThumbnailUrl = Proxy.Url(item.ThumbnailUrl) };
 
     private void Update(long articleId, Func<ArticleListItem, ArticleListItem> change)
     {

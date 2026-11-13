@@ -4,7 +4,7 @@ using Skimr.Infrastructure.Persistence;
 
 namespace Skimr.Infrastructure.Reading;
 
-public sealed record NavSource(long SubscriptionId, long FeedId, string Title, int Unread, bool HasError);
+public sealed record NavSource(long SubscriptionId, long FeedId, string Title, int Unread, bool HasError, long? IconId = null);
 
 public sealed record NavFolder(long Id, string Name, int Unread, IReadOnlyList<NavSource> Sources);
 
@@ -77,6 +77,7 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, I
                 s.FeedId,
                 Title = s.CustomTitle ?? s.Feed!.Title ?? s.Feed.Url,
                 HasError = s.Feed!.ConsecutiveFailures > 0,
+                s.Feed.IconId,
                 s.SortOrder,
                 Folders = s.Folders.Select(f => new { f.FolderId, f.SortOrder }).ToList(),
             })
@@ -109,7 +110,7 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, I
             var sources = subscriptions
                 .Where(s => s.Folders.Any(x => x.FolderId == f.Id))
                 .OrderBy(s => s.Folders.First(x => x.FolderId == f.Id).SortOrder).ThenBy(s => s.Title, StringComparer.OrdinalIgnoreCase)
-                .Select(s => new NavSource(s.Id, s.FeedId, s.Title, unread.GetValueOrDefault(s.FeedId), s.HasError))
+                .Select(s => new NavSource(s.Id, s.FeedId, s.Title, unread.GetValueOrDefault(s.FeedId), s.HasError, s.IconId))
                 .ToList();
             return new NavFolder(f.Id, f.Name, sources.Sum(s => s.Unread), sources);
         }).ToList();
@@ -117,7 +118,7 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, I
         var unfiled = subscriptions
             .Where(s => s.Folders.Count == 0)
             .OrderBy(s => s.SortOrder).ThenBy(s => s.Title, StringComparer.OrdinalIgnoreCase)
-            .Select(s => new NavSource(s.Id, s.FeedId, s.Title, unread.GetValueOrDefault(s.FeedId), s.HasError))
+            .Select(s => new NavSource(s.Id, s.FeedId, s.Title, unread.GetValueOrDefault(s.FeedId), s.HasError, s.IconId))
             .ToList();
 
         return new NavModel(unread.Values.Sum(), todayUnread, saved, navFolders, unfiled, boards);

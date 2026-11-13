@@ -901,3 +901,16 @@ table.shortcuts th {
   display: flex;
   gap: 0.5rem;
 }
+
+.favicon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  align-self: center;
+  border-radius: 2px;
+}
+
+.nav-link .label {
+  flex: 1 1 auto;
+}
+

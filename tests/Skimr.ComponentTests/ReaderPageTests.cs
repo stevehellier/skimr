@@ -44,6 +44,8 @@ public sealed class ReaderPageTests : BunitContext
         Services.AddSingleton(new Skimr.Infrastructure.Content.ContentOptions());
         Services.AddSingleton<Skimr.Infrastructure.Content.ContentSanitizer>();
         Services.AddScoped<FullTextService>();
+        Services.AddSingleton(new Skimr.Infrastructure.Content.ImageProxyKey(new byte[32]));
+        Services.AddSingleton<Skimr.Infrastructure.Content.ImageProxy>();
 
         _auth = AddAuthorization();
         _auth.SetAuthorized("alice").SetClaims(new Claim(ClaimTypes.NameIdentifier, _userId.ToString()));

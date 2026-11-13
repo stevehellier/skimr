@@ -24,6 +24,8 @@ public static class InfrastructureServices
         services.AddSingleton<IOutboundHttp, OutboundHttp>();
 
         services.AddSingleton<ContentSanitizer>();
+        services.AddSingleton<ImageProxy>();
+        services.AddScoped<FaviconService>();
         services.AddSingleton<FeedDiscovery>();
 
         services.AddScoped<ArticleIngester>();
