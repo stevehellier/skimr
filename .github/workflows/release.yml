@@ -84,7 +84,8 @@ jobs:
           fi
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.rid }}
+          # Prefixed: the CI run in this workflow uploads its own artifacts (E2E screenshots).
+          name: release-${{ matrix.rid }}
           path: dist/*
 
   release:
@@ -97,7 +98,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: release-*
           merge-multiple: true
+      - name: Check assets
+        run: |
+          ls -l dist
+          test "$(find dist -maxdepth 1 -type f | wc -l)" -eq 4
       - name: Checksums
         run: cd dist && sha256sum -- * > SHA256SUMS
       - name: Release notes from CHANGELOG.md

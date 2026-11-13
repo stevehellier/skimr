@@ -21,8 +21,9 @@ Windows and macOS. Licensed under the [GNU AGPL v3](LICENSE).
 
 ## Quick start (Docker)
 
-The image registry is private, so Compose builds the image from this checkout (about 1–2
-minutes the first time).
+The image registry is private, so Compose builds the image from this checkout: about 1–2
+minutes the first time, plus downloading the .NET SDK and runtime images (about 1 GB) if they
+aren't cached yet.
 
 ```sh
 git clone https://github.com/stevehellier/skimr.git && cd skimr
@@ -72,10 +73,11 @@ add `--purge` to delete those and the user too. Logs: `journalctl -u skimr`.
 
 ### Windows
 
-In an elevated PowerShell, from the unpacked `win-x64` folder:
+In an elevated PowerShell ("Run as administrator"), from the unpacked `win-x64` folder:
 
 ```powershell
-.\install.ps1                      # -Port 9480; -WhatIf to see what it would do
+Set-ExecutionPolicy -Scope Process Bypass   # this window only: the script isn't signed
+.\install.ps1                               # -Port 9480; -WhatIf to see what it would do
 ```
 
 It installs to `C:\Program Files\Skimr` and keeps data in `C:\ProgramData\Skimr\data`, readable
@@ -89,7 +91,8 @@ Firewall to reach Skimr from other machines.
 
 The `osx-arm64` build runs directly (`./Skimr`, then open <http://localhost:8080>). To start it at
 login, follow the steps at the top of `local.skimr.plist`. The binary isn't signed, so remove the
-quarantine flag first (`xattr -dr com.apple.quarantine`).
+quarantine flag first (`xattr -dr com.apple.quarantine`). If macOS still stops it on Apple
+Silicon, sign it locally: `codesign --force --sign - ./Skimr`.
 
 ## Configuration
 
