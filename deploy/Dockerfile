@@ -8,7 +8,6 @@ WORKDIR /src
 
 COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./
 COPY src/Skimr.Domain/Skimr.Domain.csproj src/Skimr.Domain/
-COPY src/Skimr.Application/Skimr.Application.csproj src/Skimr.Application/
 COPY src/Skimr.Infrastructure/Skimr.Infrastructure.csproj src/Skimr.Infrastructure/
 COPY src/Skimr.Infrastructure.Sqlite/Skimr.Infrastructure.Sqlite.csproj src/Skimr.Infrastructure.Sqlite/
 COPY src/Skimr.Infrastructure.Postgres/Skimr.Infrastructure.Postgres.csproj src/Skimr.Infrastructure.Postgres/
@@ -16,7 +15,9 @@ COPY src/Skimr.Web/Skimr.Web.csproj src/Skimr.Web/
 RUN dotnet restore src/Skimr.Web/Skimr.Web.csproj -a $TARGETARCH
 
 COPY src/ src/
-RUN dotnet publish src/Skimr.Web/Skimr.Web.csproj -c Release -a $TARGETARCH --no-restore -o /app \
+# No --no-restore: the SDK decides whether to include Blazor's _framework assets (blazor.web.js)
+# from the sources, which aren't present during the cached restore above.
+RUN dotnet publish src/Skimr.Web/Skimr.Web.csproj -c Release -a $TARGETARCH -o /app \
     && mkdir /data
 
 # -extra adds ICU and tzdata (time zones, culture-aware sorting) to the chiseled image.

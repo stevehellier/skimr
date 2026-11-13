@@ -22,6 +22,8 @@ public sealed class FeedRefresherTests : IDisposable
 
     public FeedRefresherTests()
     {
+        _db.AddUser(Alice);
+        _db.AddUser(Bob);
         using var db = _db.Create();
         var feed = new Feed { Url = FeedUri.AbsoluteUri, CreatedAt = _time.UtcNow, NextFetchAt = _time.UtcNow };
         db.Feeds.Add(feed);

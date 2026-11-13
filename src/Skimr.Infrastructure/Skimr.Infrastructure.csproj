@@ -1,10 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
-    <ProjectReference Include="..\Skimr.Application\Skimr.Application.csproj" />
+    <ProjectReference Include="..\Skimr.Domain\Skimr.Domain.csproj" />
   </ItemGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
     <PackageReference Include="System.ServiceModel.Syndication" />
     <PackageReference Include="HtmlSanitizer" />
     <PackageReference Include="AngleSharp" />

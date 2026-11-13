@@ -1,0 +1,61 @@
+@page "/login"
+@attribute [AllowAnonymous]
+@attribute [EnableRateLimiting(Policies.LoginRateLimit)]
+@inject SignInManager<SkimrUser> SignIn
+@inject NavigationManager Nav
+
+<PageTitle>Sign in · Skimr</PageTitle>
+
+<h1>Sign in</h1>
+
+<ErrorList Errors="_errors" />
+
+<EditForm Model="Input" FormName="login" OnValidSubmit="LoginAsync" method="post" class="form">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+    <label for="username">User name</label>
+    <InputText id="username" @bind-Value="Input.UserName" autocomplete="username" />
+    <label for="password">Password</label>
+    <InputText id="password" type="password" @bind-Value="Input.Password" autocomplete="current-password" />
+    <label class="check"><InputCheckbox @bind-Value="Input.RememberMe" /> Keep me signed in</label>
+    <button type="submit">Sign in</button>
+</EditForm>
+
+<p><a href="register">Create an account</a></p>
+
+@code {
+    private IReadOnlyList<string> _errors = [];
+
+    protected override void OnInitialized() => Input ??= new();
+
+    [SupplyParameterFromForm]
+    private LoginModel Input { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    private async Task LoginAsync()
+    {
+        var result = await SignIn.PasswordSignInAsync(Input.UserName, Input.Password, Input.RememberMe, lockoutOnFailure: true);
+        if (result.Succeeded)
+        {
+            Nav.NavigateTo(SafeRedirect.Local(ReturnUrl, Nav.BaseUri));
+            return;
+        }
+
+        _errors = result.IsLockedOut
+            ? ["This account is locked or disabled. Try again in 15 minutes, or ask an admin."]
+            : ["Wrong user name or password."];
+    }
+
+    private sealed class LoginModel
+    {
+        [Required]
+        public string UserName { get; set; } = "";
+
+        [Required]
+        public string Password { get; set; } = "";
+
+        public bool RememberMe { get; set; } = true;
+    }
+}

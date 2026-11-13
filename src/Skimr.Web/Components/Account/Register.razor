@@ -1,0 +1,85 @@
+@page "/register"
+@attribute [AllowAnonymous]
+@attribute [EnableRateLimiting(Policies.LoginRateLimit)]
+@inject AccountService Accounts
+@inject SignInManager<SkimrUser> SignIn
+@inject UserManager<SkimrUser> Users
+@inject NavigationManager Nav
+
+<PageTitle>Create account · Skimr</PageTitle>
+
+<h1>Create an account</h1>
+
+@if (_mode == RegistrationMode.Closed)
+{
+    <p>Registration is closed. Ask an admin to create an account for you.</p>
+}
+else if (_mode == RegistrationMode.InviteOnly && string.IsNullOrEmpty(Input.Invite))
+{
+    <p>You need an invite link from an admin to sign up.</p>
+}
+else
+{
+    <ErrorList Errors="_errors" />
+
+    <EditForm Model="Input" FormName="register" OnValidSubmit="RegisterAsync" method="post" class="form">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+        <input type="hidden" name="Input.Invite" value="@Input.Invite" />
+        <label for="username">User name</label>
+        <InputText id="username" @bind-Value="Input.UserName" autocomplete="username" />
+        <label for="password">Password (at least 10 characters)</label>
+        <InputText id="password" type="password" @bind-Value="Input.Password" autocomplete="new-password" />
+        <label for="confirm">Confirm password</label>
+        <InputText id="confirm" type="password" @bind-Value="Input.ConfirmPassword" autocomplete="new-password" />
+        <button type="submit">Create account</button>
+    </EditForm>
+}
+
+<p><a href="login">Sign in instead</a></p>
+
+@code {
+    private IReadOnlyList<string> _errors = [];
+    private RegistrationMode _mode;
+
+    [SupplyParameterFromForm]
+    private RegisterModel Input { get; set; } = default!;
+
+    [SupplyParameterFromQuery(Name = "invite")]
+    private string? InviteFromLink { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        Input.Invite ??= InviteFromLink;
+        _mode = await Accounts.GetRegistrationModeAsync(CancellationToken.None);
+    }
+
+    private async Task RegisterAsync()
+    {
+        var result = await Accounts.RegisterAsync(Input.UserName, Input.Password, Input.Invite, CancellationToken.None);
+        if (!result.Succeeded)
+        {
+            _errors = result.Errors;
+            return;
+        }
+
+        var user = await Users.FindByIdAsync(result.UserId!.Value.ToString());
+        await SignIn.SignInAsync(user!, isPersistent: true);
+        Nav.NavigateTo(Nav.BaseUri);
+    }
+
+    private sealed class RegisterModel
+    {
+        public string? Invite { get; set; }
+
+        [Required, StringLength(64)]
+        public string UserName { get; set; } = "";
+
+        [Required, StringLength(200, MinimumLength = 10)]
+        public string Password { get; set; } = "";
+
+        [Compare(nameof(Password), ErrorMessage = "The passwords don't match.")]
+        public string ConfirmPassword { get; set; } = "";
+    }
+}

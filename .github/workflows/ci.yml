@@ -48,10 +48,22 @@ jobs:
       - name: Smoke test
         run: |
           docker run -d --name skimr-ci -p 8080:8080 skimr:ci
+          healthy=false
           for i in $(seq 1 30); do
             status=$(docker inspect -f '{{.State.Health.Status}}' skimr-ci)
-            [ "$status" = "healthy" ] && exit 0
+            [ "$status" = "healthy" ] && healthy=true && break
             sleep 3
           done
-          docker logs skimr-ci
-          exit 1
+          if [ "$healthy" != true ]; then docker logs skimr-ci; exit 1; fi
+
+          # The published image must serve every script and stylesheet a signed-out visitor needs
+          # (the test host serves them from the build output and can't catch a broken publish).
+          docker logs skimr-ci 2>&1 | grep -q "setup code" || { echo "setup code not logged"; exit 1; }
+          html=$(curl -sf http://localhost:8080/setup)
+          assets=$(echo "$html" | grep -oE '(href|src)="[^"]+\.(css|js)"' | sed -E 's/^(href|src)="//; s/"$//' | sort -u)
+          echo "$assets" | grep -q "_framework/blazor.web" || { echo "page doesn't reference blazor.web.js"; exit 1; }
+          for asset in $assets; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8080/${asset#/}")
+            echo "$code $asset"
+            [ "$code" = "200" ] || exit 1
+          done

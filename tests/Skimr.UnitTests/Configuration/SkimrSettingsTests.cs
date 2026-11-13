@@ -140,6 +140,28 @@ public sealed class SkimrSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Registration_and_rate_limit_defaults_and_values()
+    {
+        var defaults = Load();
+        defaults.DefaultRegistrationMode.Should().Be(Skimr.Infrastructure.Identity.RegistrationMode.InviteOnly);
+        defaults.LoginAttemptsPerMinute.Should().Be(10);
+        defaults.ApiRequestsPerMinute.Should().Be(600);
+
+        var custom = Load(("Registration:DefaultMode", "closed"), ("Security:LoginAttemptsPerMinute", "3"), ("Security:ApiRequestsPerMinute", "60"));
+        custom.DefaultRegistrationMode.Should().Be(Skimr.Infrastructure.Identity.RegistrationMode.Closed);
+        custom.LoginAttemptsPerMinute.Should().Be(3);
+        custom.ApiRequestsPerMinute.Should().Be(60);
+    }
+
+    [Fact]
+    public void Bad_registration_and_rate_limit_values_are_reported()
+    {
+        var act = () => Load(("Registration:DefaultMode", "anyone"), ("Security:LoginAttemptsPerMinute", "0"), ("Security:ApiRequestsPerMinute", "5"));
+
+        act.Should().Throw<InvalidConfigurationException>().Which.Errors.Should().HaveCount(3);
+    }
+
+    [Fact]
     public void Unwritable_data_directory_fails()
     {
         // A file where the directory should be makes CreateDirectory fail on every OS.

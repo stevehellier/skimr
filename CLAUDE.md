@@ -6,12 +6,11 @@ Full plan, data model and API surface: `docs/PLAN.md`.
 
 ## Status
 
-Phase 2 (Domain and fetching) done: entities, tolerant parsers, discovery, sanitiser, SSRF guard, refresher with conditional GET and backoff, bounded scheduler, WebSub. Next: Phase 3 (Auth and multi-user).
+Phase 3 (Auth and multi-user) done: Identity with user-name sign-in, setup wizard with a one-time code, registration modes and invites, admin user management, hashed API tokens (bearer-only API), lockout, rate limits. Next: Phase 4 (Core UI).
 
 ## Architecture
 
 - `Skimr.Domain` — entities only, no package references.
-- `Skimr.Application` — empty for now (PLAN D30). Depends on Domain only.
 - `Skimr.Infrastructure` — EF Core, fetching, parsing, sanitising, SSRF guard, extraction, AI clients. Interfaces only where a test needs a fake (`IOutboundHttp`, `IFeedRefresher`).
 - Every string from a feed is stored through `StoredText.Fit` (strips control chars Postgres rejects, respects column length).
 - `Skimr.Infrastructure.Sqlite` / `.Postgres` — per-provider migrations and search.
@@ -27,7 +26,9 @@ Phase 2 (Domain and fetching) done: entities, tolerant parsers, discovery, sanit
 - No inline `<script>` or `style=""` in our markup — the CSP forbids them.
 - New config keys are read and validated in `SkimrSettings.Load` (PLAN D28), never `IOptions.ValidateOnStart`.
 - No secrets in the repo. `.env` must be in `.gitignore` before one is created.
-- API tokens stored as SHA-256 only; the plain token is shown once.
+- API tokens stored as SHA-256 only; the plain token is shown once. `/api` accepts bearer tokens only, never cookies (PLAN D33).
+- Every page needs a signed-in user (fallback policy). Anything anonymous must say so explicitly: `[AllowAnonymous]` or `.AllowAnonymous()`.
+- Account forms are static SSR. Blazor form names must be unique per page; for per-row actions use one named form plus `<button form="id" name="Model.Command" value="...">`.
 
 ## Conventions
 
@@ -61,4 +62,4 @@ Config order: `appsettings.json` → env vars `SKIMR__Section__Key` → command 
 
 ## Decisions
 
-See `docs/PLAN.md` §4 (D1–D31). Add new decisions there, not here.
+See `docs/PLAN.md` §4 (D1–D38). Add new decisions there, not here.

@@ -38,7 +38,7 @@ public sealed class FeedSchedulerTests : IDisposable
         db.SaveChanges();
         if (subscribed)
         {
-            db.Subscriptions.Add(new Subscription { UserId = Guid.NewGuid(), FeedId = feed.Id, CreatedAt = _time.UtcNow });
+            db.Subscriptions.Add(new Subscription { UserId = _db.AddUser(), FeedId = feed.Id, CreatedAt = _time.UtcNow });
             db.SaveChanges();
         }
 

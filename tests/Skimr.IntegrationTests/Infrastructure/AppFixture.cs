@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Testcontainers.PostgreSql;
 
 namespace Skimr.IntegrationTests.Infrastructure;
@@ -9,21 +10,42 @@ namespace Skimr.IntegrationTests.Infrastructure;
 /// <summary>Boots the app against one database provider. Each provider gets its own subclass.</summary>
 public abstract class AppFixture : IAsyncLifetime
 {
-    private readonly string _dataDirectory = Path.Combine(Path.GetTempPath(), "skimr-tests", Guid.NewGuid().ToString("N"));
+    private readonly List<string> _dataDirectories = [];
 
+    /// <summary>One shared app per test class. Tests that need an empty database use <see cref="CreateFreshApp"/>.</summary>
     public SkimrFactory Factory { get; private set; } = null!;
 
-    protected abstract ValueTask<IReadOnlyDictionary<string, string>> DatabaseSettingsAsync();
+    /// <summary>Settings that point at a brand-new, empty database.</summary>
+    protected abstract IReadOnlyDictionary<string, string> NewDatabase();
+
+    protected virtual ValueTask StartAsync() => ValueTask.CompletedTask;
 
     public async ValueTask InitializeAsync()
     {
-        var settings = new Dictionary<string, string>(await DatabaseSettingsAsync())
+        await StartAsync();
+        Factory = CreateFreshApp();
+    }
+
+    /// <summary>A new app with its own empty database and data directory. Dispose it after the test.</summary>
+    public SkimrFactory CreateFreshApp(params (string Key, string Value)[] extra)
+    {
+        var dataDirectory = Path.Combine(Path.GetTempPath(), "skimr-tests", Guid.NewGuid().ToString("N"));
+        _dataDirectories.Add(dataDirectory);
+
+        var settings = new Dictionary<string, string>(NewDatabase())
         {
-            ["Storage:DataDirectory"] = _dataDirectory,
+            ["Storage:DataDirectory"] = dataDirectory,
             // Tests drive fetching explicitly; the background scheduler would race them.
             ["Fetch:Enabled"] = "false",
+            // Login-heavy tests would otherwise trip each other's rate limit. RateLimitTests lowers it.
+            ["Security:LoginAttemptsPerMinute"] = "10000",
         };
-        Factory = new SkimrFactory(settings);
+        foreach (var (key, value) in extra)
+        {
+            settings[key] = value;
+        }
+
+        return new SkimrFactory(settings);
     }
 
     public WebApplicationFactory<Program> WithSettings(params (string Key, string Value)[] extra)
@@ -44,9 +66,16 @@ public abstract class AppFixture : IAsyncLifetime
     {
         await Factory.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_dataDirectory))
+        foreach (var directory in _dataDirectories.Where(Directory.Exists))
         {
-            Directory.Delete(_dataDirectory, recursive: true);
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            catch (IOException)
+            {
+                // A fresh app a test forgot to dispose can still hold its log file; temp space is fine.
+            }
         }
 
         GC.SuppressFinalize(this);
@@ -55,26 +84,27 @@ public abstract class AppFixture : IAsyncLifetime
 
 public sealed class SqliteAppFixture : AppFixture
 {
-    protected override ValueTask<IReadOnlyDictionary<string, string>> DatabaseSettingsAsync() =>
-        ValueTask.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>
-        {
-            ["Database:Provider"] = "Sqlite",
-        });
+    // A new data directory means a new skimr.db file.
+    protected override IReadOnlyDictionary<string, string> NewDatabase() =>
+        new Dictionary<string, string> { ["Database:Provider"] = "Sqlite" };
 }
 
 public sealed class PostgresAppFixture : AppFixture
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
 
-    protected override async ValueTask<IReadOnlyDictionary<string, string>> DatabaseSettingsAsync()
-    {
-        await _postgres.StartAsync();
-        return new Dictionary<string, string>
+    protected override async ValueTask StartAsync() => await _postgres.StartAsync();
+
+    // One container, a new database per app: the app creates it on startup.
+    protected override IReadOnlyDictionary<string, string> NewDatabase() =>
+        new Dictionary<string, string>
         {
             ["Database:Provider"] = "Postgres",
-            ["Database:ConnectionString"] = _postgres.GetConnectionString(),
+            ["Database:ConnectionString"] = new NpgsqlConnectionStringBuilder(_postgres.GetConnectionString())
+            {
+                Database = "skimr_" + Guid.NewGuid().ToString("N")[..12],
+            }.ConnectionString,
         };
-    }
 
     public override async ValueTask DisposeAsync()
     {
@@ -88,6 +118,9 @@ public sealed class SkimrFactory(IReadOnlyDictionary<string, string> settings) :
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        // Build-time assets (e.g. the scoped CSS bundle) only exist under wwwroot after publish;
+        // outside Development they must be enabled explicitly.
+        builder.UseStaticWebAssets();
         foreach (var (key, value) in settings)
         {
             builder.UseSetting(key, value);

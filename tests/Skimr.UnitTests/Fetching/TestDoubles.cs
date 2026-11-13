@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Skimr.Infrastructure.Fetching;
+using Skimr.Infrastructure.Identity;
 using Skimr.Infrastructure.Persistence;
 
 namespace Skimr.UnitTests.Fetching;
@@ -24,7 +25,33 @@ internal sealed class TestDb : IDisposable
     public SkimrDbContext Create() =>
         new(new DbContextOptionsBuilder<SkimrDbContext>().UseSqlite(_connectionString).Options);
 
+    /// <summary>Subscriptions and article state need a real user row (foreign key).</summary>
+    public Guid AddUser(Guid? id = null)
+    {
+        using var db = Create();
+        var user = TestUsers.New(id);
+        db.Users.Add(user);
+        db.SaveChanges();
+        return user.Id;
+    }
+
     public void Dispose() => _keepAlive.Dispose();
+}
+
+internal static class TestUsers
+{
+    public static SkimrUser New(Guid? id = null)
+    {
+        var name = "user-" + Guid.NewGuid().ToString("N")[..8];
+        return new SkimrUser
+        {
+            Id = id ?? Guid.NewGuid(),
+            UserName = name,
+            NormalizedUserName = name.ToUpperInvariant(),
+            SecurityStamp = Guid.NewGuid().ToString(),
+            CreatedAt = DateTime.UtcNow,
+        };
+    }
 }
 
 internal sealed class FakeTime(DateTime utcNow) : TimeProvider

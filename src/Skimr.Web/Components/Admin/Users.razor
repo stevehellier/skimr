@@ -1,0 +1,278 @@
+@page "/admin/users"
+@attribute [Authorize(Policy = Policies.Admin)]
+@using Skimr.Domain
+@inject AccountService Accounts
+@inject UserManager<SkimrUser> UserManager
+@inject NavigationManager Nav
+
+<PageTitle>Users · Skimr</PageTitle>
+
+<h1>Users</h1>
+
+<ErrorList Errors="_errors" />
+@if (_message is not null)
+{
+    <p class="alert ok" role="status">@_message</p>
+}
+
+<section aria-labelledby="registration-heading">
+    <h2 id="registration-heading">Sign-up</h2>
+    <EditForm Model="Registration" FormName="registration-mode" OnSubmit="SetModeAsync" method="post" class="form inline">
+        <label for="mode">Who can sign up</label>
+        <InputSelect id="mode" @bind-Value="Registration.Mode">
+            <option value="@RegistrationMode.InviteOnly">People I invite</option>
+            <option value="@RegistrationMode.Closed">Only accounts admins create</option>
+            <option value="@RegistrationMode.Open">Anyone who can reach this server</option>
+        </InputSelect>
+        <button type="submit">Save</button>
+    </EditForm>
+</section>
+
+<section aria-labelledby="invite-heading">
+    <h2 id="invite-heading">Invite someone</h2>
+    @if (_inviteLink is not null)
+    {
+        <div class="alert ok" role="status">
+            <p>Send this link. It works once, for 7 days, and won't be shown again.</p>
+            <code class="secret" data-testid="invite-link">@_inviteLink</code>
+        </div>
+    }
+    <EditForm Model="NewInvite" FormName="create-invite" OnValidSubmit="CreateInviteAsync" method="post" class="form inline">
+        <DataAnnotationsValidator />
+        <label for="invite-note">Note (who it's for)</label>
+        <InputText id="invite-note" @bind-Value="NewInvite.Note" />
+        <button type="submit">Create invite link</button>
+    </EditForm>
+    @if (_invites.Count > 0)
+    {
+        <table>
+            <thead><tr><th>Note</th><th>Created</th><th>Expires</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var invite in _invites)
+                {
+                    <tr>
+                        <td>@invite.Note</td>
+                        <td>@invite.CreatedAt.ToString("yyyy-MM-dd")</td>
+                        <td>@invite.ExpiresAt.ToString("yyyy-MM-dd")</td>
+                        <td><button form="user-action" name="Action.Command" value="@($"revoke-invite:{invite.Id}")" class="danger">Revoke</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+<section aria-labelledby="create-heading">
+    <h2 id="create-heading">Create an account</h2>
+    <EditForm Model="NewUser" FormName="create-user" OnValidSubmit="CreateUserAsync" method="post" class="form">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+        <label for="new-username">User name</label>
+        <InputText id="new-username" @bind-Value="NewUser.UserName" autocomplete="off" />
+        <label for="new-password">Temporary password (at least 10 characters)</label>
+        <InputText id="new-password" type="password" @bind-Value="NewUser.Password" autocomplete="new-password" />
+        <label class="check"><InputCheckbox @bind-Value="NewUser.IsAdmin" /> Admin</label>
+        <button type="submit">Create account</button>
+    </EditForm>
+</section>
+
+<section aria-labelledby="accounts-heading">
+    <h2 id="accounts-heading">Accounts</h2>
+
+    @* One registered form; each row's buttons submit it with their own command (Blazor form names must be unique). *@
+    <form id="user-action" method="post" @formname="user-action" @onsubmit="RunActionAsync">
+        <AntiforgeryToken />
+    </form>
+
+    <table>
+        <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody>
+            @foreach (var user in _users)
+            {
+                <tr>
+                    <td>@user.UserName</td>
+                    <td>@(user.IsAdmin ? "Admin" : "User")</td>
+                    <td>@(user.IsDisabled ? "Disabled" : user.IsLockedOut ? "Locked out" : "Active")</td>
+                    <td>@user.CreatedAt.ToString("yyyy-MM-dd")</td>
+                    <td class="actions">
+                        @if (user.Id != _actorId)
+                        {
+                            <button form="user-action" name="Action.Command" value="@($"{(user.IsDisabled ? "enable" : "disable")}:{user.Id}")">@(user.IsDisabled ? "Enable" : "Disable")</button>
+                            <button form="user-action" name="Action.Command" value="@($"{(user.IsAdmin ? "remove-admin" : "make-admin")}:{user.Id}")">@(user.IsAdmin ? "Remove admin" : "Make admin")</button>
+                            <button form="user-action" name="Action.Command" value="@($"delete:{user.Id}")" class="danger">Delete</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</section>
+
+<section aria-labelledby="reset-heading">
+    <h2 id="reset-heading">Reset a password</h2>
+    <EditForm Model="Reset" FormName="reset-password" OnValidSubmit="ResetPasswordAsync" method="post" class="form inline">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+        <label for="reset-user">Account</label>
+        <InputSelect id="reset-user" @bind-Value="Reset.UserId">
+            @foreach (var user in _users)
+            {
+                <option value="@user.Id">@user.UserName</option>
+            }
+        </InputSelect>
+        <label for="reset-password">New password</label>
+        <InputText id="reset-password" type="password" @bind-Value="Reset.Password" autocomplete="new-password" />
+        <button type="submit">Reset password</button>
+    </EditForm>
+</section>
+
+@code {
+    private Guid _actorId;
+    private List<UserSummary> _users = [];
+    private List<Invite> _invites = [];
+    private IReadOnlyList<string> _errors = [];
+    private string? _message;
+    private string? _inviteLink;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthState { get; set; } = null!;
+
+    [SupplyParameterFromForm(FormName = "registration-mode")]
+    private RegistrationModel Registration { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "create-invite")]
+    private InviteModel NewInvite { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "create-user")]
+    private CreateUserModel NewUser { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "user-action")]
+    private ActionModel Action { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "reset-password")]
+    private ResetModel Reset { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Registration ??= new();
+        NewInvite ??= new();
+        NewUser ??= new();
+        Action ??= new();
+        Reset ??= new();
+        _actorId = Guid.Parse(UserManager.GetUserId((await AuthState).User)!);
+        if (Registration.Mode is null)
+        {
+            Registration.Mode = await Accounts.GetRegistrationModeAsync(CancellationToken.None);
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _users = await Accounts.ListUsersAsync(CancellationToken.None);
+        _invites = await Accounts.ListPendingInvitesAsync(CancellationToken.None);
+    }
+
+    private async Task SetModeAsync()
+    {
+        if (Registration.Mode is { } mode && Enum.IsDefined(mode))
+        {
+            await Accounts.SetRegistrationModeAsync(mode, CancellationToken.None);
+            _message = "Sign-up setting saved.";
+        }
+    }
+
+    private async Task CreateInviteAsync()
+    {
+        var code = await Accounts.CreateInviteAsync(_actorId, NewInvite.Note, CancellationToken.None);
+        _inviteLink = Nav.ToAbsoluteUri($"register?invite={Uri.EscapeDataString(code)}").AbsoluteUri;
+        NewInvite = new();
+        await LoadAsync();
+    }
+
+    private async Task CreateUserAsync()
+    {
+        Show(await Accounts.CreateUserAsync(NewUser.UserName, NewUser.Password, NewUser.IsAdmin, CancellationToken.None), "Account created.");
+        NewUser = new();
+        await LoadAsync();
+    }
+
+    private async Task ResetPasswordAsync()
+    {
+        Show(await Accounts.ResetPasswordAsync(Reset.UserId, Reset.Password), "Password reset. The user has been signed out everywhere.");
+        Reset = new();
+    }
+
+    private async Task RunActionAsync()
+    {
+        var parts = (Action.Command ?? "").Split(':', 2);
+        if (parts.Length != 2)
+        {
+            return;
+        }
+
+        var ct = CancellationToken.None;
+        if (parts[0] == "revoke-invite" && long.TryParse(parts[1], out var inviteId))
+        {
+            await Accounts.RevokeInviteAsync(inviteId, ct);
+            _message = "Invite revoked.";
+        }
+        else if (Guid.TryParse(parts[1], out var userId))
+        {
+            var result = parts[0] switch
+            {
+                "disable" => await Accounts.SetDisabledAsync(_actorId, userId, true, ct),
+                "enable" => await Accounts.SetDisabledAsync(_actorId, userId, false, ct),
+                "make-admin" => await Accounts.SetAdminAsync(_actorId, userId, true, ct),
+                "remove-admin" => await Accounts.SetAdminAsync(_actorId, userId, false, ct),
+                "delete" => await Accounts.DeleteAsync(_actorId, userId, ct),
+                _ => AccountResult.Fail("Unknown action."),
+            };
+            Show(result, "Done.");
+        }
+
+        await LoadAsync();
+    }
+
+    private void Show(AccountResult result, string success)
+    {
+        _errors = result.Errors;
+        _message = result.Succeeded ? success : null;
+    }
+
+    private sealed class RegistrationModel
+    {
+        public RegistrationMode? Mode { get; set; }
+    }
+
+    private sealed class InviteModel
+    {
+        [StringLength(200)]
+        public string? Note { get; set; }
+    }
+
+    private sealed class CreateUserModel
+    {
+        [Required, StringLength(64)]
+        public string UserName { get; set; } = "";
+
+        [Required, StringLength(200, MinimumLength = 10)]
+        public string Password { get; set; } = "";
+
+        public bool IsAdmin { get; set; }
+    }
+
+    private sealed class ActionModel
+    {
+        public string? Command { get; set; }
+    }
+
+    private sealed class ResetModel
+    {
+        public Guid UserId { get; set; }
+
+        [Required, StringLength(200, MinimumLength = 10)]
+        public string Password { get; set; } = "";
+    }
+}

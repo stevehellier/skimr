@@ -1,0 +1,149 @@
+@page "/account"
+@using Skimr.Domain
+@inject AccountService Accounts
+@inject ApiTokenService Tokens
+@inject UserManager<SkimrUser> Users
+
+<PageTitle>Account · Skimr</PageTitle>
+
+<h1>Account</h1>
+
+<section aria-labelledby="password-heading">
+    <h2 id="password-heading">Change password</h2>
+    <ErrorList Errors="_passwordErrors" />
+    @if (_passwordChanged)
+    {
+        <p class="alert ok" role="status">Password changed.</p>
+    }
+    <EditForm Model="Password" FormName="change-password" OnValidSubmit="ChangePasswordAsync" method="post" class="form">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+        <label for="current">Current password</label>
+        <InputText id="current" type="password" @bind-Value="Password.Current" autocomplete="current-password" />
+        <label for="new">New password (at least 10 characters)</label>
+        <InputText id="new" type="password" @bind-Value="Password.New" autocomplete="new-password" />
+        <button type="submit">Change password</button>
+    </EditForm>
+</section>
+
+<section aria-labelledby="tokens-heading">
+    <h2 id="tokens-heading">API tokens</h2>
+    <p>For apps and scripts that use the Skimr API. Send as <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+
+    @if (_newToken is not null)
+    {
+        <div class="alert ok" role="status">
+            <p>Copy this token now. It won't be shown again.</p>
+            <code class="secret" data-testid="new-token">@_newToken</code>
+        </div>
+    }
+
+    <EditForm Model="NewToken" FormName="create-token" OnValidSubmit="CreateTokenAsync" method="post" class="form inline">
+        <DataAnnotationsValidator />
+        <label for="token-name">Name</label>
+        <InputText id="token-name" @bind-Value="NewToken.Name" />
+        <label for="token-days">Expires after (days, blank for never)</label>
+        <InputNumber id="token-days" @bind-Value="NewToken.ExpiresInDays" />
+        <button type="submit">Create token</button>
+    </EditForm>
+
+    @* One registered form; each row's button submits it with its own command (Blazor form names must be unique). *@
+    <form id="token-action" method="post" @formname="token-action" @onsubmit="RevokeTokenAsync">
+        <AntiforgeryToken />
+    </form>
+
+    @if (_tokens.Count > 0)
+    {
+        <table>
+            <thead><tr><th>Name</th><th>Starts with</th><th>Created</th><th>Last used</th><th>Expires</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var token in _tokens)
+                {
+                    <tr>
+                        <td>@token.Name</td>
+                        <td><code>@token.Prefix…</code></td>
+                        <td>@token.CreatedAt.ToString("yyyy-MM-dd")</td>
+                        <td>@(token.LastUsedAt?.ToString("yyyy-MM-dd HH:mm") ?? "never")</td>
+                        <td>@(token.ExpiresAt?.ToString("yyyy-MM-dd") ?? "never")</td>
+                        <td><button form="token-action" name="TokenAction.Id" value="@token.Id" class="danger">Revoke</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@code {
+    private Guid _userId;
+    private List<ApiToken> _tokens = [];
+    private string? _newToken;
+    private IReadOnlyList<string> _passwordErrors = [];
+    private bool _passwordChanged;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthState { get; set; } = null!;
+
+    [SupplyParameterFromForm(FormName = "change-password")]
+    private PasswordModel Password { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "create-token")]
+    private TokenModel NewToken { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "token-action")]
+    private TokenActionModel TokenAction { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Password ??= new();
+        NewToken ??= new();
+        TokenAction ??= new();
+        _userId = Guid.Parse(Users.GetUserId((await AuthState).User)!);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync() => _tokens = await Tokens.ListAsync(_userId, CancellationToken.None);
+
+    private async Task ChangePasswordAsync()
+    {
+        var result = await Accounts.ChangePasswordAsync(_userId, Password.Current, Password.New);
+        _passwordErrors = result.Errors;
+        _passwordChanged = result.Succeeded;
+    }
+
+    private async Task CreateTokenAsync()
+    {
+        var created = await Tokens.CreateAsync(_userId, NewToken.Name, NewToken.ExpiresInDays, CancellationToken.None);
+        _newToken = created.PlainText;
+        NewToken = new();
+        await LoadAsync();
+    }
+
+    private async Task RevokeTokenAsync()
+    {
+        await Tokens.RevokeAsync(_userId, TokenAction.Id, CancellationToken.None);
+        await LoadAsync();
+    }
+
+    private sealed class PasswordModel
+    {
+        [Required]
+        public string Current { get; set; } = "";
+
+        [Required, StringLength(200, MinimumLength = 10)]
+        public string New { get; set; } = "";
+    }
+
+    private sealed class TokenModel
+    {
+        [Required, StringLength(100)]
+        public string Name { get; set; } = "";
+
+        [Range(1, 3650)]
+        public int? ExpiresInDays { get; set; }
+    }
+
+    private sealed class TokenActionModel
+    {
+        public long Id { get; set; }
+    }
+}
