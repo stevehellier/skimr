@@ -6,12 +6,15 @@ Full plan, data model and API surface: `docs/PLAN.md`.
 
 ## Status
 
-Phase 4 (Core UI) done: reader with nav and unread counts, three layouts, reader pane, mark-read modes, Read Later, keyboard shortcuts, add/organise sources and folders, light/dark/system themes, responsive layout. Next: Phase 5 (Power features).
+Phase 5 (Power features) done: boards, search (FTS5 / tsvector), full-text extraction, OPML import/export, retention, favicons, image proxy, installable PWA; 200k-article performance targets met. Next: Phase 6 (APIs).
 
 ## Architecture
 
 - `Skimr.Domain` — entities only, no package references.
 - `Skimr.Infrastructure` — EF Core, fetching, parsing, sanitising, SSRF guard, extraction, AI clients. Interfaces only where a test needs a fake (`IOutboundHttp`, `IFeedRefresher`).
+- Search is maintained by database triggers (SQLite FTS5) or an expression index (Postgres), never by app code. A migration that rebuilds the `Articles` table must recreate the `ArticleSearch_*` triggers (PLAN D51). Search tests need a migrated database; `EnsureCreated` has no FTS table.
+- Boolean filters on `UserArticles` use partial indexes (`NOT "IsRead"`, `"IsSaved"`); filter text must match the SQL EF generates or SQLite won't use them (D57). Check plans with `tools/Skimr.Perf` after changing hot queries.
+- Any outbound fetch (feeds, full text, favicons, images) goes through `IOutboundHttp`; libraries that can fetch by themselves (SmartReader) get text, never URLs.
 - Every string from a feed is stored through `StoredText.Fit` (strips control chars Postgres rejects, respects column length).
 - `Skimr.Infrastructure.Sqlite` / `.Postgres` — per-provider migrations and search.
 - `Skimr.Web` — Blazor UI, REST + Google Reader + Fever APIs, auth, hosting, DI composition.
@@ -51,6 +54,7 @@ Shell is PowerShell 7.
 dotnet build                                   # 0 warnings required
 dotnet test                                    # Microsoft.Testing.Platform; Postgres tests need Docker running
 pwsh tests/Skimr.E2ETests/bin/Debug/net10.0/playwright.ps1 install chromium  # once, for the E2E tests
+dotnet run -c Release --project tools/Skimr.Perf   # 500 sources / 200k articles timing run; writes results/phase5-perf-<date>.md
 dotnet tool restore                            # pins dotnet-ef
 dotnet run --project src/Skimr.Web             # SQLite under ./data by default
 
@@ -66,4 +70,4 @@ Config order: `appsettings.json` → env vars `SKIMR__Section__Key` → command 
 
 ## Decisions
 
-See `docs/PLAN.md` §4 (D1–D50). Add new decisions there, not here.
+See `docs/PLAN.md` §4 (D1–D57). Add new decisions there, not here.

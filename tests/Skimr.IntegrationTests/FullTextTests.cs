@@ -53,8 +53,16 @@ public abstract class FullTextTests(AppFixture fixture)
         await db.SaveChangesAsync(Ct);
         var article = new Article
         {
-            FeedId = feed.Id, DedupKey = Guid.NewGuid().ToString("N"), Title = "Short item", Url = url, ContentHtml = "<p>Teaser</p>",
-            SearchText = "Teaser", ContentHash = "h", PublishedAt = DateTime.UtcNow, FetchedAt = DateTime.UtcNow, LastSeenAt = DateTime.UtcNow,
+            FeedId = feed.Id,
+            DedupKey = Guid.NewGuid().ToString("N"),
+            Title = "Short item",
+            Url = url,
+            ContentHtml = "<p>Teaser</p>",
+            SearchText = "Teaser",
+            ContentHash = "h",
+            PublishedAt = DateTime.UtcNow,
+            FetchedAt = DateTime.UtcNow,
+            LastSeenAt = DateTime.UtcNow,
         };
         db.Articles.Add(article);
         await db.SaveChangesAsync(Ct);
