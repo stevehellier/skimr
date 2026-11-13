@@ -15,5 +15,6 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Skimr.UnitTests" />
     <InternalsVisibleTo Include="Skimr.IntegrationTests" />
+    <InternalsVisibleTo Include="Skimr.ComponentTests" />
   </ItemGroup>
 </Project>
