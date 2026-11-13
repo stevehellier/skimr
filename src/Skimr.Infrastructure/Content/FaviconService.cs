@@ -23,6 +23,9 @@ internal sealed class FaviconService(SkimrDbContext db, IOutboundHttp http, Stor
     public const int MaxBytes = 200 * 1024;
     public static readonly TimeSpan RetryAfter = TimeSpan.FromDays(7);
 
+    /// <summary>Favicons run on the feed workers, so a slow site must not hold one for long.</summary>
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(5);
+
     private static readonly HtmlParser Parser = new();
 
     public static bool IsDue(Feed feed, DateTime now) => feed.IconCheckedAt is not { } checkedAt || now - checkedAt > RetryAfter;
@@ -59,7 +62,7 @@ internal sealed class FaviconService(SkimrDbContext db, IOutboundHttp http, Stor
         var candidates = new List<Uri>();
         try
         {
-            var response = await http.GetAsync(new FetchRequest(site, "text/html"), cancellationToken);
+            var response = await http.GetAsync(new FetchRequest(site, "text/html", Timeout: RequestTimeout), cancellationToken);
             if (response.IsSuccess && response.ContentType?.Contains("html", StringComparison.OrdinalIgnoreCase) == true)
             {
                 var document = Parser.ParseDocument(System.Text.Encoding.UTF8.GetString(response.Body));
@@ -69,7 +72,7 @@ internal sealed class FaviconService(SkimrDbContext db, IOutboundHttp http, Stor
                     .Select(l => UrlResolver.Resolve(l.GetAttribute("href"), response.FinalUri))
                     .OfType<string>()
                     .Select(u => new Uri(u))
-                    .Take(3));
+                    .Take(2));
             }
         }
         catch (FetchException)
@@ -86,7 +89,7 @@ internal sealed class FaviconService(SkimrDbContext db, IOutboundHttp http, Stor
         FetchResponse response;
         try
         {
-            response = await http.GetAsync(new FetchRequest(url, "image/*"), cancellationToken);
+            response = await http.GetAsync(new FetchRequest(url, "image/*", Timeout: RequestTimeout), cancellationToken);
         }
         catch (FetchException)
         {

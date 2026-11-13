@@ -179,6 +179,15 @@ public sealed class OutboundHttpTests : IAsyncLifetime
         (await act.Should().ThrowAsync<FetchException>()).Which.Message.Should().Contain("Timed out");
     }
 
+    [Fact]
+    public async Task A_request_can_have_a_shorter_timeout_than_the_default()
+    {
+        var act = () => Client(new FetchOptions { Timeout = TimeSpan.FromSeconds(30) })
+            .GetAsync(new FetchRequest(_server.Url("slow"), "*/*", Timeout: TimeSpan.FromSeconds(1)), Ct);
+
+        (await act.Should().ThrowAsync<FetchException>()).Which.Message.Should().Be("Timed out after 1 s.");
+    }
+
     [Theory]
     [InlineData("file:///etc/passwd")]
     [InlineData("ftp://example.com/feed")]

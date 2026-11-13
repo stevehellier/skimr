@@ -20,7 +20,10 @@ const int Folders = 20;
 const int Warmup = 3;
 const int Runs = 20;
 
-var output = args.Length > 0 ? args[0] : $"results/phase5-perf-{DateTime.UtcNow:yyyy-MM-dd}.md";
+// Default: no statistics, like a database straight after import. --optimize runs what the app runs at
+// startup and after retention (SqliteMaintenance.Optimize), i.e. steady state.
+var analyzeStats = args.Contains("--optimize");
+var output = args.FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal)) ?? $"results/phase5-perf-{DateTime.UtcNow:yyyy-MM-dd}.md";
 var dir = Path.Combine(Path.GetTempPath(), "skimr-perf", Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(dir);
 var connectionString = $"Data Source={Path.Combine(dir, "perf.db")}";
@@ -146,17 +149,21 @@ await using (var connection = new SqliteConnection(connectionString))
 }
 
 seedTimer.Stop();
-await using (var connection = new SqliteConnection(connectionString))
-{
-    await connection.OpenAsync();
-    await using var analyze = connection.CreateCommand();
-    analyze.CommandText = "ANALYZE;";
-    await analyze.ExecuteNonQueryAsync();
-}
+if (analyzeStats)
+    await using (var connection = new SqliteConnection(connectionString))
+    {
+        await connection.OpenAsync();
+        await using var analyze = connection.CreateCommand();
+        analyze.CommandText = SqliteMaintenance.Optimize;
+        var optimizeTimer = Stopwatch.StartNew();
+        await analyze.ExecuteNonQueryAsync();
+        Console.WriteLine($"PRAGMA optimize took {optimizeTimer.Elapsed.TotalSeconds:F1} s");
+        report.AppendLine($"Startup PRAGMA optimize on this database took {optimizeTimer.Elapsed.TotalSeconds:F1} s.");
+    }
 
 Log($"# Phase 5 performance run ({DateTime.UtcNow:yyyy-MM-dd})");
 Log("");
-Log($"SQLite file in WAL mode, real migrations (FTS5 triggers on). {Feeds} sources in {Folders} folders, {Feeds * ArticlesPerFeed:N0} articles for one user, 70% read, 1% saved, published over 120 days. Seeded in {seedTimer.Elapsed.TotalSeconds:F1} s.");
+Log($"SQLite file in WAL mode, real migrations (FTS5 triggers on), {(analyzeStats ? "after the app's startup PRAGMA optimize (steady state)" : "no statistics yet (worst case: straight after a bulk load, before the next restart or retention run)")}. {Feeds} sources in {Folders} folders, {Feeds * ArticlesPerFeed:N0} articles for one user, 70% read, 1% saved, published over 120 days. Seeded in {seedTimer.Elapsed.TotalSeconds:F1} s.");
 Log($"Machine: {Environment.ProcessorCount} logical CPUs, {System.Runtime.InteropServices.RuntimeInformation.OSDescription}, .NET {Environment.Version}. Each operation: {Warmup} warm-up runs, then {Runs} timed runs.");
 Log("");
 Log("| Operation | Median | p95 | Target |");

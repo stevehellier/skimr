@@ -10,12 +10,14 @@ public sealed class SqliteArticleSearch : IArticleSearch
 {
     private const int MaxTerms = 12;
 
-    public IQueryable<long> MatchingArticleIds(SkimrDbContext db, string query)
+    public IQueryable<long> MatchingArticleIds(SkimrDbContext db, string query, int? limit)
     {
         var match = ToFtsQuery(query);
         return match is null
             ? db.Articles.Where(_ => false).Select(a => a.Id)
-            : db.Database.SqlQuery<long>($"SELECT rowid AS \"Value\" FROM ArticleSearch WHERE ArticleSearch MATCH {match} ORDER BY rowid DESC LIMIT {IArticleSearch.MaxCandidates}");
+            : limit is { } max
+                ? db.Database.SqlQuery<long>($"SELECT rowid AS \"Value\" FROM ArticleSearch WHERE ArticleSearch MATCH {match} ORDER BY rowid DESC LIMIT {max}")
+                : db.Database.SqlQuery<long>($"SELECT rowid AS \"Value\" FROM ArticleSearch WHERE ArticleSearch MATCH {match}");
     }
 
     /// <summary>

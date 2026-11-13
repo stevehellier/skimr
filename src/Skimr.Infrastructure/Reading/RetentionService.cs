@@ -41,6 +41,15 @@ public sealed partial class RetentionService(IDbContextFactory<SkimrDbContext> c
                 .ExecuteDeleteAsync(cancellationToken);
         }
 
+        // Big deletes shift the planner's statistics; refresh them on SQLite (PLAN D57).
+        await using (var db = await contexts.CreateDbContextAsync(cancellationToken))
+        {
+            if (db.Database.ProviderName?.Contains("Sqlite", StringComparison.Ordinal) == true)
+            {
+                await db.Database.ExecuteSqlRawAsync("PRAGMA optimize;", cancellationToken);
+            }
+        }
+
         LogPurged(rows, articles, feeds);
         return new RetentionResult(rows, articles, feeds);
     }

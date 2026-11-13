@@ -61,7 +61,7 @@ public sealed record ArticleDetail(
 /// user's id; ids from the browser are never trusted on their own. Each call uses its own
 /// DbContext, because an interactive circuit outlives any single operation.
 /// </summary>
-public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, IArticleSearch search, TimeProvider time)
+public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, IArticleSearch search, TimeProvider time, SearchOptions? searchOptions = null)
 {
     public const int PageSize = 40;
 
@@ -161,7 +161,8 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, I
         }
 
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
-        var matching = search.MatchingArticleIds(db, query.Text.Trim());
+        var filtered = query.SourceId is not null || query.FolderId is not null || query.From is not null || query.To is not null || query.Read != ReadFilter.Any;
+        var matching = search.MatchingArticleIds(db, query.Text.Trim(), filtered ? null : (searchOptions ?? SearchOptions.Default).CandidateLimit);
         var rows = db.UserArticles.Where(u => u.UserId == userId && matching.Contains(u.ArticleId));
 
         if (query.SourceId is { } sourceId)

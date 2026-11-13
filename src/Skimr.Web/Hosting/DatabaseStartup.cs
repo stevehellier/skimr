@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 using Skimr.Infrastructure.Persistence;
+using Skimr.Infrastructure.Sqlite;
 using Skimr.Web.Configuration;
 
 namespace Skimr.Web.Hosting;
@@ -30,6 +31,13 @@ internal static class DatabaseStartup
             }
 
             await db.Database.MigrateAsync(cancellationToken);
+        }
+
+        if (settings.Provider == DatabaseProvider.Sqlite)
+        {
+            // Index statistics for SQLite's planner (PLAN D57). Without them it picked plans up to
+            // 50x slower for some reader queries. Bounded, so it takes milliseconds at startup.
+            await db.Database.ExecuteSqlRawAsync(SqliteMaintenance.Optimize, cancellationToken);
         }
     }
 }

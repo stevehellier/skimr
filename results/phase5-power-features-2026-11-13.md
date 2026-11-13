@@ -2,30 +2,29 @@
 
 ## dotnet test (local, Windows, SDK 10.0.401, Docker Desktop for Postgres 17, Playwright Chromium)
 
-```
+```nRunning tests from C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64)
 Running tests from C:\Users\Steve\Projects\Skimr\tests\Skimr.E2ETests\bin\Debug\net10.0\Skimr.E2ETests.dll (net10.0|x64)
 Running tests from C:\Users\Steve\Projects\Skimr\tests\Skimr.ComponentTests\bin\Debug\net10.0\Skimr.ComponentTests.dll (net10.0|x64)
-Running tests from C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64)
 Running tests from C:\Users\Steve\Projects\Skimr\tests\Skimr.UnitTests\bin\Debug\net10.0\Skimr.UnitTests.dll (net10.0|x64)
-C:\Users\Steve\Projects\Skimr\tests\Skimr.ComponentTests\bin\Debug\net10.0\Skimr.ComponentTests.dll (net10.0|x64) passed (15s 155ms)
-C:\Users\Steve\Projects\Skimr\tests\Skimr.UnitTests\bin\Debug\net10.0\Skimr.UnitTests.dll (net10.0|x64) passed (17s 687ms)
-C:\Users\Steve\Projects\Skimr\tests\Skimr.E2ETests\bin\Debug\net10.0\Skimr.E2ETests.dll (net10.0|x64) passed (51s 133ms)
-C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64) passed (1m 38s 838ms)
+C:\Users\Steve\Projects\Skimr\tests\Skimr.ComponentTests\bin\Debug\net10.0\Skimr.ComponentTests.dll (net10.0|x64) passed (15s 403ms)
+C:\Users\Steve\Projects\Skimr\tests\Skimr.UnitTests\bin\Debug\net10.0\Skimr.UnitTests.dll (net10.0|x64) passed (27s 308ms)
+C:\Users\Steve\Projects\Skimr\tests\Skimr.E2ETests\bin\Debug\net10.0\Skimr.E2ETests.dll (net10.0|x64) passed (48s 485ms)
+C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64) passed (1m 39s 808ms)
 
 Test run summary: Passed!
-  C:\Users\Steve\Projects\Skimr\tests\Skimr.E2ETests\bin\Debug\net10.0\Skimr.E2ETests.dll (net10.0|x64) passed (51s 133ms)
-  C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64) passed (1m 38s 838ms)
-  C:\Users\Steve\Projects\Skimr\tests\Skimr.UnitTests\bin\Debug\net10.0\Skimr.UnitTests.dll (net10.0|x64) passed (17s 687ms)
-  C:\Users\Steve\Projects\Skimr\tests\Skimr.ComponentTests\bin\Debug\net10.0\Skimr.ComponentTests.dll (net10.0|x64) passed (15s 155ms)
+  C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64) passed (1m 39s 808ms)
+  C:\Users\Steve\Projects\Skimr\tests\Skimr.UnitTests\bin\Debug\net10.0\Skimr.UnitTests.dll (net10.0|x64) passed (27s 308ms)
+  C:\Users\Steve\Projects\Skimr\tests\Skimr.E2ETests\bin\Debug\net10.0\Skimr.E2ETests.dll (net10.0|x64) passed (48s 485ms)
+  C:\Users\Steve\Projects\Skimr\tests\Skimr.ComponentTests\bin\Debug\net10.0\Skimr.ComponentTests.dll (net10.0|x64) passed (15s 403ms)
 
-  total: 488
+  total: 492
   failed: 0
-  succeeded: 488
+  succeeded: 492
   skipped: 0
-  duration: 1m 40s 009ms
+  duration: 1m 40s 688ms
 ```
 
-488 passed, 0 failed: 272 unit, 194 integration (SQLite and Postgres), 19 component (bUnit), 3 E2E (Playwright).
+492 passed, 0 failed: 273 unit, 197 integration (SQLite and Postgres), 19 component (bUnit), 3 E2E (Playwright).
 
 ## Acceptance criteria
 
@@ -50,6 +49,9 @@ Test run summary: Passed!
 2. **The search SQL triggered SQLite table-rebuild warnings.** It sat in a migration that also rebuilt `Feeds`; it now has its own migration.
 3. **Postgres prefix search.** `websearch_to_tsquery` ignores `*`; prefix terms now use a sanitised `to_tsquery`.
 4. **CSP precedence.** Blazor sets its own weaker `frame-ancestors 'self'` CSP on component pages, so the app's policy must always win, except where an endpoint opts in to a stricter one (SVG images).
-5. **Performance, measured then fixed.** See the perf file: nav 311 → 36 ms, one source 454 → 1.8 ms, common-word search 363 → 11 ms.
+5. **The search cap dropped filtered matches.** The 5,000-candidate cap ran before the user and filter scoping. It now applies only to unfiltered searches (`The_candidate_cap_never_hides_matches_from_a_filtered_search`, which failed on both providers before the fix).
+6. **Favicons could hold fetch workers** for 30 s per request after an OPML import. They now use a 5 s per-request timeout and try at most 3 URLs.
+7. **The perf run used ANALYZE, which real installs never run.** It is re-measured without statistics (still within target) and with the app's new startup `PRAGMA optimize`. A sampled `analysis_limit` misled the planner (85 ms Read Later count), so the optimize is full; it takes 0.5 s at 200k articles.
+8. **Performance, measured then fixed.** See the perf file: nav 311 → 36 ms, one source 454 → 1.8 ms, common-word search 363 → 11 ms.
 
 Screenshots: `results/phase5-e2e/`.

@@ -9,11 +9,17 @@ namespace Skimr.Infrastructure.Reading;
 /// </summary>
 public interface IArticleSearch
 {
-    /// <summary>
-    /// Only the newest this many matching articles are considered (PLAN D56). A word in every
-    /// article would otherwise make search scan the whole index (360 ms at 200k articles).
-    /// </summary>
-    public const int MaxCandidates = 5000;
+    /// <param name="limit">Only the newest this many matches, or all when null (PLAN D56).</param>
+    IQueryable<long> MatchingArticleIds(SkimrDbContext db, string query, int? limit);
+}
 
-    IQueryable<long> MatchingArticleIds(SkimrDbContext db, string query);
+/// <summary>
+/// An unfiltered search considers only the newest <see cref="CandidateLimit"/> matching articles:
+/// a word in every article otherwise scans the whole index (360 ms at 200k, 11 ms capped).
+/// Filtered searches (source, folder, dates, read state) are never capped, because the cap is
+/// global and would silently drop older or quieter matches.
+/// </summary>
+public sealed record SearchOptions(int CandidateLimit = 5000)
+{
+    public static readonly SearchOptions Default = new();
 }

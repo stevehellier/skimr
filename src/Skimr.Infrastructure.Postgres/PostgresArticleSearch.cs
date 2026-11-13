@@ -15,7 +15,7 @@ public sealed class PostgresArticleSearch : IArticleSearch
 {
     private const int MaxTerms = 12;
 
-    public IQueryable<long> MatchingArticleIds(SkimrDbContext db, string query)
+    public IQueryable<long> MatchingArticleIds(SkimrDbContext db, string query, int? limit)
     {
         if (string.IsNullOrWhiteSpace(query))
         {
@@ -27,9 +27,7 @@ public sealed class PostgresArticleSearch : IArticleSearch
             return db.Articles
                 .Where(a => EF.Functions.ToTsVector("simple", a.Title + " " + (a.SearchText ?? ""))
                     .Matches(EF.Functions.WebSearchToTsQuery("simple", query)))
-                .OrderByDescending(a => a.Id)
-                .Take(IArticleSearch.MaxCandidates)
-                .Select(a => a.Id);
+                .Newest(limit);
         }
 
         var prefixQuery = ToPrefixQuery(query);
@@ -38,9 +36,7 @@ public sealed class PostgresArticleSearch : IArticleSearch
             : db.Articles
                 .Where(a => EF.Functions.ToTsVector("simple", a.Title + " " + (a.SearchText ?? ""))
                     .Matches(EF.Functions.ToTsQuery("simple", prefixQuery)))
-                .OrderByDescending(a => a.Id)
-                .Take(IArticleSearch.MaxCandidates)
-                .Select(a => a.Id);
+                .Newest(limit);
     }
 
     internal static string? ToPrefixQuery(string input)
@@ -53,4 +49,10 @@ public sealed class PostgresArticleSearch : IArticleSearch
             .ToList();
         return terms.Count == 0 ? null : string.Join(" & ", terms);
     }
+}
+
+internal static class NewestExtension
+{
+    public static IQueryable<long> Newest(this IQueryable<Skimr.Domain.Article> matches, int? limit) =>
+        limit is { } max ? matches.OrderByDescending(a => a.Id).Take(max).Select(a => a.Id) : matches.Select(a => a.Id);
 }

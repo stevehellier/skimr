@@ -123,6 +123,24 @@ public abstract class PowerFeatureTests(AppFixture fixture)
     }
 
     [Fact]
+    public async Task The_candidate_cap_never_hides_matches_from_a_filtered_search()
+    {
+        // Cap of 3 with 5 matches. The newest-by-id 3 are the oldest-published here, so a date
+        // filter for the 2 newest-published must still find them: filtered searches aren't capped.
+        await using var app = fixture.WithServices(s => s.AddSingleton(new SearchOptions(CandidateLimit: 3)));
+        var reading = app.Services.GetRequiredService<ReadingService>();
+        var word = "cq" + Guid.NewGuid().ToString("N")[..8];
+        var alice = await NewUserAsync();
+        var (url, _) = await NewFeedAsync(Enumerable.Range(0, 5).Select(i => ($"{word} {i}", "")).ToArray());
+        var source = await SubscribeAsync(alice, url);
+
+        (await reading.SearchAsync(alice, new SearchQuery(word), null, Ct)).Items.Should().HaveCount(3, "an unfiltered search is capped");
+        (await reading.SearchAsync(alice, new SearchQuery(word, From: DateTime.UtcNow.AddDays(-1.5)), null, Ct)).Items.Select(i => i.Title)
+            .Should().BeEquivalentTo([$"{word} 0", $"{word} 1"]);
+        (await reading.SearchAsync(alice, new SearchQuery(word, SourceId: source), null, Ct)).Items.Should().HaveCount(5);
+    }
+
+    [Fact]
     public async Task Search_only_finds_your_own_articles_and_ignores_others_filters()
     {
         var word = "iq" + Guid.NewGuid().ToString("N")[..8];
@@ -278,13 +296,15 @@ public sealed class SqlitePowerFeatureTests(SqliteAppFixture fixture) : PowerFea
 
 public sealed class PostgresPowerFeatureTests(PostgresAppFixture fixture) : PowerFeatureTests(fixture), IClassFixture<PostgresAppFixture>
 {
-    [Fact]
-    public async Task Search_query_uses_the_gin_index()
+    [Theory]
+    [InlineData(5000)]
+    [InlineData(null)]
+    public async Task Search_query_uses_the_gin_index(int? limit)
     {
         // The query must repeat the index expression exactly, or Postgres silently scans every row.
         await using var scope = fixture.Factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SkimrDbContext>();
-        var generated = scope.ServiceProvider.GetRequiredService<IArticleSearch>().MatchingArticleIds(db, "kestrel").ToQueryString();
+        var generated = scope.ServiceProvider.GetRequiredService<IArticleSearch>().MatchingArticleIds(db, "kestrel", limit).ToQueryString();
         // ToQueryString lists parameters as "-- @name='value' (DbType = ...)" comments; inline them for EXPLAIN.
         var lines = generated.Split('\n');
         var sql = string.Join('\n', lines.Where(l => !l.StartsWith("--", StringComparison.Ordinal)));
