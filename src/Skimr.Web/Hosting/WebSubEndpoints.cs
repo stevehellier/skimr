@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Mvc;
 using Skimr.Infrastructure.Fetching;
 
 namespace Skimr.Web.Hosting;
@@ -8,7 +9,10 @@ internal static class WebSubEndpoints
     /// <summary>Hub callbacks. Anonymous by design: deliveries are authenticated by HMAC signature.</summary>
     public static IEndpointRouteBuilder MapWebSub(this IEndpointRouteBuilder app, FetchOptions options)
     {
-        var group = app.MapGroup(WebSub.CallbackPrefix.TrimEnd('/')).DisableAntiforgery();
+        var group = app.MapGroup(WebSub.CallbackPrefix.TrimEnd('/'))
+            .AllowAnonymous()
+            .DisableAntiforgery()
+            .WithMetadata(new SkipStatusCodePagesAttribute());
 
         group.MapGet("/{feedId:long}", async (long feedId, HttpRequest request, WebSub webSub, CancellationToken ct) =>
         {

@@ -43,11 +43,11 @@ public abstract partial class SmokeTests(AppFixture app)
     }
 
     [Fact]
-    public async Task Home_page_sends_security_headers_and_has_no_inline_script_or_style()
+    public async Task Pages_send_security_headers_and_have_no_inline_script_or_style()
     {
         using var client = app.Factory.CreateClient();
 
-        var response = await client.GetAsync(new Uri("/", UriKind.Relative), Ct);
+        var response = await client.GetAsync(new Uri("/setup", UriKind.Relative), Ct);
         var html = await response.Content.ReadAsStringAsync(Ct);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -66,7 +66,7 @@ public abstract partial class SmokeTests(AppFixture app)
         using var client = factory.CreateClient();
 
         var health = await client.GetAsync(new Uri("/skimr/health", UriKind.Relative), Ct);
-        var html = await client.GetStringAsync(new Uri("/skimr/", UriKind.Relative), Ct);
+        var html = await client.GetStringAsync(new Uri("/skimr/setup", UriKind.Relative), Ct);
 
         health.StatusCode.Should().Be(HttpStatusCode.OK);
         html.Should().Contain("<base href=\"/skimr/\"");

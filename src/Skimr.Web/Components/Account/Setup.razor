@@ -1,0 +1,84 @@
+@page "/setup"
+@attribute [AllowAnonymous]
+@attribute [EnableRateLimiting(Policies.LoginRateLimit)]
+@inject SetupService SetupService
+@inject SignInManager<SkimrUser> SignIn
+@inject UserManager<SkimrUser> Users
+@inject NavigationManager Nav
+
+<PageTitle>Set up Skimr</PageTitle>
+
+<h1>Set up Skimr</h1>
+
+@if (SetupService.IsComplete)
+{
+    <p>Setup is complete. <a href="login">Sign in</a>.</p>
+}
+else
+{
+    <p>Create the admin account. The setup code is printed in the server log when Skimr starts
+        (for Docker: <code>docker compose logs skimr</code>).</p>
+
+    <ErrorList Errors="_errors" />
+
+    <EditForm Model="Input" FormName="setup" OnValidSubmit="CompleteAsync" method="post" class="form">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+        <label for="code">Setup code</label>
+        <InputText id="code" @bind-Value="Input.Code" autocomplete="off" />
+        <label for="username">Admin user name</label>
+        <InputText id="username" @bind-Value="Input.UserName" autocomplete="username" />
+        <label for="password">Password (at least 10 characters)</label>
+        <InputText id="password" type="password" @bind-Value="Input.Password" autocomplete="new-password" />
+        <label for="confirm">Confirm password</label>
+        <InputText id="confirm" type="password" @bind-Value="Input.ConfirmPassword" autocomplete="new-password" />
+        <label for="mode">Who can sign up</label>
+        <InputSelect id="mode" @bind-Value="Input.Mode">
+            <option value="@RegistrationMode.InviteOnly">People I invite</option>
+            <option value="@RegistrationMode.Closed">Only accounts I create</option>
+            <option value="@RegistrationMode.Open">Anyone who can reach this server</option>
+        </InputSelect>
+        <button type="submit">Create admin account</button>
+    </EditForm>
+}
+
+@code {
+    private IReadOnlyList<string> _errors = [];
+
+    protected override void OnInitialized() => Input ??= new();
+
+    [SupplyParameterFromForm]
+    private SetupModel Input { get; set; } = default!;
+
+    private async Task CompleteAsync()
+    {
+        var result = await SetupService.CompleteAsync(Input.Code, Input.UserName, Input.Password, Input.Mode, CancellationToken.None);
+        if (!result.Succeeded)
+        {
+            _errors = result.Errors;
+            return;
+        }
+
+        // Sign straight in: the fastest path from install to reading.
+        var user = await Users.FindByIdAsync(result.UserId!.Value.ToString());
+        await SignIn.SignInAsync(user!, isPersistent: true);
+        Nav.NavigateTo(Nav.BaseUri);
+    }
+
+    private sealed class SetupModel
+    {
+        [Required]
+        public string Code { get; set; } = "";
+
+        [Required, StringLength(64)]
+        public string UserName { get; set; } = "";
+
+        [Required, StringLength(200, MinimumLength = 10)]
+        public string Password { get; set; } = "";
+
+        [Compare(nameof(Password), ErrorMessage = "The passwords don't match.")]
+        public string ConfirmPassword { get; set; } = "";
+
+        public RegistrationMode Mode { get; set; } = RegistrationMode.InviteOnly;
+    }
+}

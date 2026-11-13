@@ -1,11 +1,14 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Mvc;
 using Serilog;
 using Skimr.Infrastructure;
+using Skimr.Infrastructure.Identity;
 using Skimr.Infrastructure.Persistence;
 using Skimr.Infrastructure.Postgres;
 using Skimr.Infrastructure.Sqlite;
+using Skimr.Web.Auth;
 using Skimr.Web.Components;
 using Skimr.Web.Configuration;
 using Skimr.Web.Hosting;
@@ -58,6 +61,7 @@ builder.Services.AddDbContext<SkimrDbContext>(options => _ = settings.Provider s
 });
 
 builder.Services.AddSkimrInfrastructure(settings.Fetch, settings.Content);
+builder.Services.AddSkimrAuth(settings);
 
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
 
@@ -83,6 +87,7 @@ var app = builder.Build();
 try
 {
     await DatabaseStartup.InitialiseAsync(app.Services, settings, app.Lifetime.ApplicationStopping);
+    await app.Services.GetRequiredService<SetupService>().InitialiseAsync(app.Lifetime.ApplicationStopping);
 }
 catch (Exception ex)
 {
@@ -105,15 +110,24 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+app.UseStatusCodePagesWithReExecute("/status/{0}", createScopeForStatusCodePages: true);
+
+// Order matters: the setup redirect needs the endpoint and user; antiforgery must follow auth.
+app.UseAuthentication();
+app.UseSetupRedirect();
+app.UseRateLimiter();
+app.UseAuthorization();
 app.UseAntiforgery();
 
-app.MapHealthChecks("/health", new HealthCheckOptions { Predicate = _ => false });
-app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = c => c.Tags.Contains("ready") });
-
+// Anonymous by design: Docker's HEALTHCHECK, hub callbacks (HMAC-signed) and static files.
+app.MapHealthChecks("/health", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous().WithMetadata(new SkipStatusCodePagesAttribute());
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = c => c.Tags.Contains("ready") }).AllowAnonymous().WithMetadata(new SkipStatusCodePagesAttribute());
 app.MapWebSub(settings.Fetch);
+app.MapStaticAssets().AllowAnonymous();
 
-app.MapStaticAssets();
+app.MapAccountEndpoints();
+app.MapApi();
+
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

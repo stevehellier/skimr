@@ -1,6 +1,7 @@
 using System.Net;
 using Skimr.Infrastructure.Content;
 using Skimr.Infrastructure.Fetching;
+using Skimr.Infrastructure.Identity;
 
 namespace Skimr.Web.Configuration;
 
@@ -35,6 +36,15 @@ internal sealed class SkimrSettings
     public required FetchOptions Fetch { get; init; }
 
     public required ContentOptions Content { get; init; }
+
+    /// <summary>Used until an admin picks a mode in the setup wizard or admin page.</summary>
+    public required RegistrationMode DefaultRegistrationMode { get; init; }
+
+    /// <summary>POSTs per minute per IP to setup, login and register.</summary>
+    public required int LoginAttemptsPerMinute { get; init; }
+
+    /// <summary>API requests per minute per user.</summary>
+    public required int ApiRequestsPerMinute { get; init; }
 
     public static SkimrSettings Load(IConfiguration config, string contentRoot)
     {
@@ -104,6 +114,15 @@ internal sealed class SkimrSettings
             ? new ContentOptions { AllowedEmbedHosts = embedHosts }
             : new ContentOptions();
 
+        var registrationText = config["Registration:DefaultMode"] ?? nameof(RegistrationMode.InviteOnly);
+        if (!Enum.TryParse<RegistrationMode>(registrationText, ignoreCase: true, out var registration) || !Enum.IsDefined(registration))
+        {
+            errors.Add($"Registration:DefaultMode must be 'Open', 'InviteOnly' or 'Closed' (got '{registrationText}').");
+        }
+
+        var loginPerMinute = read.Int("Security:LoginAttemptsPerMinute", 10, 1, 10_000);
+        var apiPerMinute = read.Int("Security:ApiRequestsPerMinute", 600, 10, 1_000_000);
+
         if (errors.Count == 0)
         {
             EnsureWritable(dataDirectory, errors);
@@ -125,6 +144,9 @@ internal sealed class SkimrSettings
             KnownNetworks = networks,
             Fetch = fetch,
             Content = content,
+            DefaultRegistrationMode = registration,
+            LoginAttemptsPerMinute = loginPerMinute,
+            ApiRequestsPerMinute = apiPerMinute,
         };
     }
 
