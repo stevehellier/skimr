@@ -30,6 +30,9 @@ public sealed class UserPreferences
     public Guid UserId { get; set; }
 
     public MarkReadMode MarkReadMode { get; set; } = MarkReadMode.OnOpen;
+
+    /// <summary>The user's consent to send article text to the admin's AI provider (PLAN D12). Off by default.</summary>
+    public bool AiEnabled { get; set; }
 }
 
 /// <summary>Remembered per view ("all", "today", "saved", "folder:12", "feed:34").</summary>

@@ -46,6 +46,9 @@ public sealed class ReaderPageTests : BunitContext
         Services.AddScoped<FullTextService>();
         Services.AddSingleton(new Skimr.Infrastructure.Content.ImageProxyKey(new byte[32]));
         Services.AddSingleton<Skimr.Infrastructure.Content.ImageProxy>();
+        // AI off, as on a default install: the summary box and AI feed links must stay hidden.
+        Services.AddSingleton(new Skimr.Infrastructure.Ai.AiOptions());
+        Services.AddScoped<Skimr.Infrastructure.Ai.AiService>();
 
         _auth = AddAuthorization();
         _auth.SetAuthorized("alice").SetClaims(new Claim(ClaimTypes.NameIdentifier, _userId.ToString()));

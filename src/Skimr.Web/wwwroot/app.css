@@ -897,6 +897,21 @@ table.shortcuts th {
   color: var(--muted);
 }
 
+.summary-box {
+  margin-top: 0.75rem;
+}
+
+.summary-box .summary {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--muted);
+  white-space: pre-line;
+}
+
+.error-text {
+  color: var(--danger);
+}
+
 .inline-add {
   display: flex;
   gap: 0.5rem;

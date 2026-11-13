@@ -10,11 +10,15 @@ public sealed record NavFolder(long Id, string Name, int Unread, IReadOnlyList<N
 
 public sealed record NavBoard(long Id, string Name, int Count);
 
-public sealed record NavModel(int AllUnread, int TodayUnread, int SavedCount, IReadOnlyList<NavFolder> Folders, IReadOnlyList<NavSource> Unfiled, IReadOnlyList<NavBoard>? Boards = null)
+public sealed record NavAiFeed(long Id, string Name, int Unread, bool HasError);
+
+public sealed record NavModel(int AllUnread, int TodayUnread, int SavedCount, IReadOnlyList<NavFolder> Folders, IReadOnlyList<NavSource> Unfiled, IReadOnlyList<NavBoard>? Boards = null, IReadOnlyList<NavAiFeed>? AiFeeds = null)
 {
     public static readonly NavModel Empty = new(0, 0, 0, [], []);
 
     public IReadOnlyList<NavBoard> BoardList => Boards ?? [];
+
+    public IReadOnlyList<NavAiFeed> AiFeedList => AiFeeds ?? [];
 }
 
 public enum ReadFilter
@@ -140,6 +144,15 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, I
             .OrderBy(b => b.SortOrder).ThenBy(b => b.Name)
             .Select(b => new NavBoard(b.Id, b.Name, b.Articles.Count))
             .ToListAsync(cancellationToken);
+        var aiFeeds = await db.AiFeeds
+            .Where(f => f.UserId == userId)
+            .OrderBy(f => f.Name)
+            .Select(f => new NavAiFeed(
+                f.Id,
+                f.Name,
+                db.AiFeedMatches.Count(m => m.AiFeedId == f.Id && db.UserArticles.Any(u => u.UserId == userId && u.ArticleId == m.ArticleId && !u.IsRead)),
+                f.LastError != null))
+            .ToListAsync(cancellationToken);
 
         var navFolders = folders.Select(f =>
         {
@@ -157,7 +170,7 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, I
             .Select(s => new NavSource(s.Id, s.FeedId, s.Title, unread.GetValueOrDefault(s.FeedId), s.HasError, s.IconId))
             .ToList();
 
-        return new NavModel(unread.Values.Sum(), todayUnread, saved, navFolders, unfiled, boards);
+        return new NavModel(unread.Values.Sum(), todayUnread, saved, navFolders, unfiled, boards, aiFeeds);
     }
 
     public async Task<ArticlePage> GetArticlesAsync(
@@ -582,6 +595,9 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, I
                 return mine.Where(u => db.BoardArticles.Any(b => b.BoardId == view.Id && b.Board!.UserId == userId && b.ArticleId == u.ArticleId));
             case ViewKind.Search:
                 return mine.Where(_ => false);
+            case ViewKind.AiFeed:
+                // Like boards, matches stay visible even if their source is later dropped.
+                return mine.Where(u => db.AiFeedMatches.Any(m => m.AiFeedId == view.Id && m.AiFeed!.UserId == userId && m.ArticleId == u.ArticleId));
         }
 
         var subscribed = mine.Where(u => db.Subscriptions.Any(s => s.UserId == userId && s.FeedId == u.FeedId));

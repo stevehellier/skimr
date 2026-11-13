@@ -1,0 +1,72 @@
+@using Skimr.Infrastructure.Ai
+@inject AiService Ai
+
+@* Shown only when the admin set up AI and the user turned it on (PLAN D12). *@
+@if (_enabled)
+{
+    <div class="summary-box">
+        @if (_summary is not null)
+        {
+            @* Model output is plain text from untrusted input: rendered as text, never as markup. *@
+            <p class="summary" data-testid="summary">@_summary</p>
+        }
+        else
+        {
+            <button type="button" class="secondary" id="summarise" disabled="@_busy" @onclick="SummariseAsync">@(_busy ? "Summarising…" : "Summarise")</button>
+        }
+        @if (_error is not null)
+        {
+            <p class="alert error" role="alert">@_error</p>
+        }
+    </div>
+}
+
+@code {
+    private bool _enabled;
+    private bool _busy;
+    private string? _summary;
+    private string? _error;
+    private long _shownFor;
+
+    [Parameter, EditorRequired]
+    public Guid UserId { get; set; }
+
+    [Parameter, EditorRequired]
+    public long ArticleId { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_shownFor != ArticleId)
+        {
+            _shownFor = ArticleId;
+            _summary = null;
+            _error = null;
+            _enabled = await Ai.IsEnabledForAsync(UserId, CancellationToken.None);
+        }
+    }
+
+    private async Task SummariseAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        var articleId = ArticleId;
+        try
+        {
+            var result = await Ai.SummariseAsync(UserId, articleId, CancellationToken.None);
+            if (articleId == ArticleId)
+            {
+                _summary = result.Text;
+                _error = result.Failure is null ? null : result.Message;
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

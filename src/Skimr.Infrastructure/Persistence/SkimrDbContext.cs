@@ -28,6 +28,16 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options)
 
     public DbSet<BoardArticle> BoardArticles => Set<BoardArticle>();
 
+    public DbSet<AiFeed> AiFeeds => Set<AiFeed>();
+
+    public DbSet<AiFeedSource> AiFeedSources => Set<AiFeedSource>();
+
+    public DbSet<AiFeedMatch> AiFeedMatches => Set<AiFeedMatch>();
+
+    public DbSet<ArticleSummary> ArticleSummaries => Set<ArticleSummary>();
+
+    public DbSet<AiUsage> AiUsage => Set<AiUsage>();
+
     public DbSet<Icon> Icons => Set<Icon>();
 
     public DbSet<Feed> Feeds => Set<Feed>();
@@ -115,6 +125,45 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options)
             e.HasIndex(x => x.ArticleId);
             e.HasOne(x => x.Board).WithMany(b => b.Articles).HasForeignKey(x => x.BoardId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<Article>().WithMany().HasForeignKey(x => x.ArticleId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiFeed>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.Rule).HasMaxLength(1000);
+            e.Property(x => x.LastError).HasMaxLength(500);
+            e.HasIndex(x => x.UserId);
+            e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Sources).WithOne().HasForeignKey(x => x.AiFeedId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiFeedSource>(e =>
+        {
+            e.HasIndex(x => x.AiFeedId);
+            e.HasOne<Folder>().WithMany().HasForeignKey(x => x.FolderId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Subscription>().WithMany().HasForeignKey(x => x.SubscriptionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiFeedMatch>(e =>
+        {
+            e.HasKey(x => new { x.AiFeedId, x.ArticleId });
+            e.HasIndex(x => x.ArticleId);
+            e.HasOne(x => x.AiFeed).WithMany().HasForeignKey(x => x.AiFeedId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Article>().WithMany().HasForeignKey(x => x.ArticleId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ArticleSummary>(e =>
+        {
+            e.HasKey(x => new { x.ArticleId, x.Model });
+            e.Property(x => x.Model).HasMaxLength(100);
+            e.Property(x => x.Text).HasMaxLength(4000);
+            e.HasOne<Article>().WithMany().HasForeignKey(x => x.ArticleId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiUsage>(e =>
+        {
+            e.HasKey(x => new { x.UserId, x.Day });
+            e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Icon>(e =>

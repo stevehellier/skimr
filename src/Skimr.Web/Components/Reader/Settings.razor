@@ -3,8 +3,10 @@
 @implements IAsyncDisposable
 @using System.Security.Claims
 @using Skimr.Domain
+@using Skimr.Infrastructure.Ai
 @using Skimr.Infrastructure.Reading
 @inject ReadingService Reading
+@inject AiService Ai
 @inject IJSRuntime JS
 
 <PageTitle>Settings · Skimr</PageTitle>
@@ -46,6 +48,18 @@
     </fieldset>
 </section>
 
+@if (Ai.Available)
+{
+    <section aria-labelledby="ai-heading">
+        <h2 id="ai-heading">AI features</h2>
+        <p class="hint">Article summaries and AI feeds. When on, the text of the articles you summarise or filter is sent to the AI provider this server's admin has set up. Off until you turn it on.</p>
+        <label class="check">
+            <input type="checkbox" id="ai-enabled" checked="@_aiEnabled" @onchange="SetAiAsync" />
+            Send article text to the AI provider for summaries and AI feeds
+        </label>
+    </section>
+}
+
 @code {
     private static readonly (string Value, string Label)[] Themes = [("system", "Match my device"), ("light", "Light"), ("dark", "Dark")];
 
@@ -60,6 +74,7 @@
     private MarkReadMode _mode;
     private string _theme = "system";
     private bool _saved;
+    private bool _aiEnabled;
     private IJSObjectReference? _module;
 
     [CascadingParameter]
@@ -69,6 +84,14 @@
     {
         _userId = Guid.Parse((await AuthState).User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         _mode = await Reading.GetMarkReadModeAsync(_userId, CancellationToken.None);
+        _aiEnabled = await Ai.IsEnabledForAsync(_userId, CancellationToken.None);
+    }
+
+    private async Task SetAiAsync(ChangeEventArgs e)
+    {
+        _aiEnabled = e.Value is true;
+        await Ai.SetEnabledAsync(_userId, _aiEnabled, CancellationToken.None);
+        _saved = true;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
