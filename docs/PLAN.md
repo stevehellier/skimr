@@ -114,7 +114,7 @@ Folders map to `user/-/label/<name>`, Read Later to `starred`. Boards are not ex
 | D8 | GReader `ClientLogin` takes **username + an API token** (app password), not the account password | A stolen client config can't log into the web UI and can be revoked alone |
 | D9 | Fever key = md5(username:token). Stored as SHA-256 of that md5 | Fever protocol forces md5 on the client; we still don't store what the client sends |
 | D10 | Image proxy URLs are HMAC-signed with a key from Data Protection | Prevents an open proxy |
-| D11 | CSP: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:` (`'self' data:` only when image proxy on); `frame-src` = embed allow-list; `frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'`. Feed `style` attributes are stripped | No inline script or style anywhere in our own markup. Risk: Blazor's reconnect UI — verify in Phase 1 |
+| D11 | CSP: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:` (`'self' data:` only when image proxy on); `frame-src` = embed allow-list; `frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'`. Feed `style` attributes are stripped | No inline script or style anywhere in our own markup. Server-rendered HTML checked in Phase 1 (no inline script/style). Live circuit under this CSP verified in Phase 4, the first phase with interactive components |
 | D12 | AI: provider configured by admin (off by default). Each user must also opt in before any of their content leaves the server | "Never send content unless the user has enabled it" |
 | D13 | AI clients use plain `HttpClient` against the OpenAI-compatible and Anthropic Messages APIs; no SDK packages | Two small JSON calls; avoids two dependencies |
 | D14 | Docker `HEALTHCHECK` runs `Skimr --healthcheck` (the app binary probes `/health`) | Chiseled images have no shell or curl |
@@ -122,6 +122,11 @@ Folders map to `user/-/label/<name>`, Read Later to `starred`. Boards are not ex
 | D16 | SQLite: WAL mode, busy timeout 5 s; fetch workers write in short transactions | SQLite allows one writer |
 | D17 | WebSub only when `PublicUrl` is configured | The hub needs a reachable callback URL |
 | D18 | Fever is required (Phase 6b), not optional | Agreed 2026-11-13 |
+| D19 | No HTTPS redirection in the app; HSTS only on HTTPS requests | Most installs sit behind a TLS-terminating proxy or run plain HTTP on a LAN; forcing a redirect breaks both |
+| D20 | Docker `HEALTHCHECK` probes `/health/ready`, not `/health` | An app that can't reach its database isn't usable, and compose `depends_on: service_healthy` needs that signal |
+| D21 | Data Protection keys persisted to `<data>/keys` | Cookies survive restarts and container rebuilds; backup stays "copy one folder". Keys aren't encrypted at rest; filesystem permissions protect them |
+| D22 | Tests run on Microsoft.Testing.Platform (opted in via `global.json`) | .NET 10 SDK no longer runs xUnit v3 through VSTest |
+| D23 | Serilog registered with `preserveStaticLogger: true` | Several hosts in one test process otherwise share one static logger and leave log files locked |
 
 ## 5. Dependencies (all pre-approved by the stack; listed so later PRs don't stall)
 
@@ -154,7 +159,7 @@ Each phase: one GitHub issue, one `<type>/<slug>` branch, one PR, merged when CI
 | 1 | **Skeleton** — solution, projects, DI, config binding + startup validation, Serilog, health checks, SQLite + Postgres wiring, first migration per provider, auto-migrate flag, Dockerfile, CI | `dotnet build` has 0 warnings; tests pass; app starts on SQLite and on Postgres (Testcontainers); `/health` and `/health/ready` return 200; `docker build` + `docker run` report healthy; CI green |
 | 2 | **Domain and fetching** — entities, parsers (RSS 0.9x/2.0, RDF, Atom, JSON Feed), discovery, scheduler, conditional GET, backoff, dedup, sanitiser, SSRF guard, WebSub | Fixture-based parser tests incl. bad dates, missing GUIDs, CDATA, mixed encodings, relative URLs; unit tests for dedup, backoff, scheduler, sanitiser, SSRF (incl. redirect-to-private and DNS rebinding); XXE fixture rejected |
 | 3 | **Auth and multi-user** — Identity, setup wizard, registration modes, invites, admin user management, API tokens, lockout, rate limits | Integration tests: wizard runs once only; closed registration blocks sign-up; token auth works and revocation sticks; lockout and rate limit trigger |
-| 4 | **Core UI** — nav + unread counts, add/organise sources and folders, three layouts, reader pane, mark-read modes, Read Later, keyboard shortcuts, themes, responsive | bUnit tests for article list and nav counts; manual walk-through on desktop + mobile width; keyboard-only use works; AA contrast checked |
+| 4 | **Core UI** — nav + unread counts, add/organise sources and folders, three layouts, reader pane, mark-read modes, Read Later, keyboard shortcuts, themes, responsive | bUnit tests for article list and nav counts; manual walk-through on desktop + mobile width; keyboard-only use works; AA contrast checked; a live interactive circuit runs with no CSP violations in a real browser console |
 | 5 | **Power features** — Boards, search (FTS5 / tsvector), full text, OPML, retention, favicons, image proxy, PWA | OPML round-trip test with nested folders; search tests on both providers; retention never removes saved/boarded; perf run: 500 sources / 200k articles, counts and first page each < 100 ms on SQLite (results saved under `results/`) |
 | 6 | **APIs** — REST complete + Scalar, Google Reader; 6b Fever | API integration tests on both providers incl. a scripted GReader sync flow; manual sync from NetNewsWire |
 | 7 | **AI (optional)** — `ISummariser`, OpenAI-compatible + Anthropic, summaries, AI feeds | Tests with a fake provider; no outbound call when the user hasn't opted in |
@@ -165,4 +170,5 @@ Each phase: one GitHub issue, one `<type>/<slug>` branch, one PR, merged when CI
 - **PWA + Interactive Server**: the app needs a live SignalR connection. The service worker caches the shell so the app installs and starts fast, but nothing works offline, and flaky mobile connections show the reconnect banner.
 - **"2 minutes on a fresh machine"** depends on image pull speed; I'll measure from `compose up` with the image already pulled.
 - **SQLite at 200k × N users**: fine for one or a few users. Many heavy users → recommend Postgres in the docs.
+- **First-start log noise on Postgres**: EF logs one `ERR` querying `__EFMigrationsHistory` before creating it. Harmless; document in README.
 - **arm64 image**: built in CI with QEMU; slow (~10–15 min) but no Pi needed for building.
