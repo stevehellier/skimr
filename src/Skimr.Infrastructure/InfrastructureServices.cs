@@ -30,6 +30,8 @@ public static class InfrastructureServices
         services.AddScoped<FeedRefresher>();
         services.AddScoped<IFeedRefresher>(sp => sp.GetRequiredService<FeedRefresher>());
         services.AddSingleton<FeedScheduler>();
+        services.AddScoped<Reading.ReadingService>();
+        services.AddScoped<Reading.LibraryService>();
         services.AddHostedService(sp => sp.GetRequiredService<FeedScheduler>());
 
         return services;
