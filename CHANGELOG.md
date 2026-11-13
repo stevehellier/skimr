@@ -3,6 +3,14 @@
 All notable changes to Skimr. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/) (0.x: the API and data format may still change).
 
+## [0.1.1] - 2026-11-13
+
+### Added
+- `SECURITY.md`: supported versions, how to report a vulnerability privately, and what's in scope.
+- `CONTRIBUTING.md`: workflow, conventions, and how to build and test. Both now ship in the release archives.
+
+No code changes: the application is the same as 0.1.0.
+
 ## [0.1.0] - 2026-11-13
 
 The first release.
@@ -44,4 +52,5 @@ The first release.
 - `install.sh` (hardened systemd service), `install.ps1` (Windows service) and a launchd example.
 - Retention of old read articles, and SQLite statistics refreshed at startup and after retention.
 
+[0.1.1]: https://github.com/stevehellier/skimr/releases/tag/v0.1.1
 [0.1.0]: https://github.com/stevehellier/skimr/releases/tag/v0.1.0
