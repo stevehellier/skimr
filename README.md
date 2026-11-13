@@ -260,4 +260,5 @@ dotnet run --project src/Skimr.Web
 ```
 
 Design notes, the data model and every decision are in [docs/PLAN.md](docs/PLAN.md). Test runs and
-performance measurements are in `results/`.
+performance measurements are in `results/`. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a
+pull request, and [SECURITY.md](SECURITY.md) to report a vulnerability.
