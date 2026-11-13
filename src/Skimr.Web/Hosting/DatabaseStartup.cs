@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Skimr.Infrastructure.Persistence;
 using Skimr.Web.Configuration;
 
@@ -19,6 +21,14 @@ internal static class DatabaseStartup
 
         if (settings.AutoMigrate)
         {
+            // Exists() probes with errors expected, so a fresh Postgres server doesn't log a
+            // connection ERR before the database is created.
+            var creator = db.GetService<IRelationalDatabaseCreator>();
+            if (!await creator.ExistsAsync(cancellationToken))
+            {
+                await creator.CreateAsync(cancellationToken);
+            }
+
             await db.Database.MigrateAsync(cancellationToken);
         }
     }
