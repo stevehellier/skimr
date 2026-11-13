@@ -243,6 +243,21 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         await Assertions.Expect(page.Locator(".article-item")).ToHaveCountAsync(1);
         await ShotAsync(page, "desktop-dark");
 
+        // ---- PWA ---------------------------------------------------------------------------
+        var swScope = await page.EvaluateAsync<string>("() => navigator.serviceWorker.ready.then(r => r.scope)");
+        swScope.Should().Be(_baseUrl);
+        var manifest = await page.APIRequest.GetAsync(_baseUrl + "manifest.webmanifest");
+        manifest.Status.Should().Be(200);
+        manifest.Headers["content-type"].Should().Contain("manifest+json");
+        (await manifest.TextAsync()).Should().Contain("\"start_url\": \"./\"");
+        await page.ReloadAsync();
+        await Assertions.Expect(page.Locator(".article-item")).ToHaveCountAsync(1);
+        var cached = await page.EvaluateAsync<string[]>("() => caches.keys().then(ks => Promise.all(ks.map(k => caches.open(k).then(c => c.keys())))).then(all => all.flat().map(r => r.url))");
+        cached.Should().Contain(u => u.EndsWith("offline.html", StringComparison.Ordinal));
+        cached.Where(u => !u.EndsWith("offline.html", StringComparison.Ordinal)).Should().OnlyContain(
+            u => Regex.IsMatch(u, @"\.[a-z0-9]{8,}\.(css|js|png|svg|woff2?)$", RegexOptions.IgnoreCase),
+            "only fingerprinted static files are cached: never pages, API, proxied images or icons");
+
         // ---- Phone width -------------------------------------------------------------------
         var state = await page.Context.StorageStateAsync();
         var phone = await NewPageAsync(new BrowserNewContextOptions
@@ -309,9 +324,9 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         return result.UserId!.Value;
     }
 
-    private async Task<IPage> SignInAsync(string userName)
+    private async Task<IPage> SignInAsync(string userName, BrowserNewContextOptions? options = null)
     {
-        var page = await NewPageAsync();
+        var page = await NewPageAsync(options);
         await page.GotoAsync(_baseUrl + "login");
         await page.FillAsync("#username", userName);
         await page.FillAsync("#password", Password);
@@ -365,7 +380,9 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         var adminId = await CreateUserAsync("boss", isAdmin: true);
         var userId = await CreateUserAsync("leaver", isAdmin: false);
         await SubscribeAsync(userId, "feed.xml");
-        var page = await SignInAsync("leaver");
+        // Service workers off: Playwright can't intercept requests a service worker makes, and this
+        // test needs to see (and block) the redirect to sign-in.
+        var page = await SignInAsync("leaver", new BrowserNewContextOptions { ServiceWorkers = ServiceWorkerPolicy.Block });
         await Assertions.Expect(page.Locator(".article-item")).ToHaveCountAsync(3, new() { Timeout = 20_000 });
 
         await using (var scope = _app.Services.CreateAsyncScope())
