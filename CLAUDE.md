@@ -6,7 +6,7 @@ Full plan, data model and API surface: `docs/PLAN.md`.
 
 ## Status
 
-Phase 7 (optional AI: summaries, AI feeds) done; Phases 1–6 done (reader, power features, REST + Google Reader + Fever APIs). Next: Phase 8 (packaging and docs). Manual NetNewsWire/Reeder sync check is deferred to Phase 8.
+All 8 phases done (v0.1.0): reader, power features, REST + Google Reader + Fever APIs, optional AI, packaging (compose, install.sh, install.ps1, launchd, release workflow). Still to confirm by hand: a NetNewsWire/Reeder sync and a real AI provider call.
 
 ## Architecture
 
@@ -64,11 +64,12 @@ dotnet ef migrations add <Name> --project src/Skimr.Infrastructure.Sqlite
 dotnet ef migrations add <Name> --project src/Skimr.Infrastructure.Postgres
 
 docker build -f deploy/Dockerfile -t skimr:dev .
-docker compose -f deploy/docker-compose.yml up -d  # compose files arrive in Phase 8
+docker compose -f deploy/docker-compose.yml up -d --build   # SKIMR_PORT=9480 if 8080 is reserved
+dotnet publish src/Skimr.Web -p:PublishProfile=linux-x64   # also linux-arm64, win-x64, osx-arm64 -> artifacts/publish/<rid>
 ```
 
 Config order: `appsettings.json` → env vars `SKIMR__Section__Key` → command line. Everything persistent lives under the data directory.
 
 ## Decisions
 
-See `docs/PLAN.md` §4 (D1–D63). Add new decisions there, not here.
+See `docs/PLAN.md` §4 (D1–D64). Add new decisions there, not here.

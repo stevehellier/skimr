@@ -118,6 +118,31 @@ public sealed class ReaderPageTests : BunitContext
     }
 
     [Fact]
+    public async Task An_empty_all_view_fills_in_when_the_first_fetch_lands()
+    {
+        // After an OPML import the user lands on All before any source has been fetched.
+        var factory = Services.GetRequiredService<IDbContextFactory<SkimrDbContext>>();
+        List<UserArticle> rows;
+        await using (var db = await factory.CreateDbContextAsync(Xunit.TestContext.Current.CancellationToken))
+        {
+            rows = await db.UserArticles.AsNoTracking().ToListAsync(Xunit.TestContext.Current.CancellationToken);
+            await db.UserArticles.ExecuteDeleteAsync(Xunit.TestContext.Current.CancellationToken);
+        }
+
+        var reader = Render<Reader>();
+        reader.WaitForElement(".empty");
+        reader.FindAll(".article-item").Should().BeEmpty();
+
+        await using (var db = await factory.CreateDbContextAsync(Xunit.TestContext.Current.CancellationToken))
+        {
+            db.UserArticles.AddRange(rows);
+            await db.SaveChangesAsync(Xunit.TestContext.Current.CancellationToken);
+        }
+
+        reader.WaitForAssertion(() => reader.FindAll(".article-item").Should().HaveCount(3), TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
     public void Opening_an_article_shows_it_and_marks_it_read()
     {
         var reader = RenderReader();

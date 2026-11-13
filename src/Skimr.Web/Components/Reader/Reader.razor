@@ -305,10 +305,11 @@
             _loading = false;
             _focusAfterRender = "#view-title";
 
-            // A source that's empty is usually one just added: its first fetch runs in the
-            // background, so check back until articles arrive. (Navigating here creates a new
-            // instance of this page, so the subscribe handler can't do this itself.)
-            if (_view.Kind == ViewKind.Source && _items.Count == 0)
+            // An empty feed view usually means sources were just added (one source, or an OPML
+            // import landing on All): their first fetch runs in the background, so check back
+            // until articles arrive. (Navigating here creates a new instance of this page, so the
+            // subscribe and import handlers can't do this themselves.)
+            if (_items.Count == 0 && _view.Kind is ViewKind.Source or ViewKind.All or ViewKind.Today or ViewKind.Folder)
             {
                 _ = WatchNewSourceAsync(_view);
             }
@@ -396,7 +397,11 @@
             {
                 await InvokeAsync(async () =>
                 {
-                    await ReloadNavAsync();
+                    // An empty list picks up articles that arrived since; a non-empty one is left
+                    // alone so the reader's place isn't lost.
+                    await (_items.Count == 0 && _view.Kind != ViewKind.Search
+                        ? Task.WhenAll(ReloadListAsync(), ReloadNavAsync())
+                        : ReloadNavAsync());
                     StateHasChanged();
                 });
             }

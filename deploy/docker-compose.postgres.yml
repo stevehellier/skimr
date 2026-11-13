@@ -1,0 +1,44 @@
+# Skimr with PostgreSQL 17.
+#   cp deploy/example.env deploy/.env      # then set POSTGRES_PASSWORD in deploy/.env
+#   docker compose -f deploy/docker-compose.postgres.yml up -d --build
+name: skimr-postgres
+
+services:
+  skimr:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: skimr:local
+    restart: unless-stopped
+    ports:
+      # Host port; change with SKIMR_PORT (in deploy/.env or the shell) if 8080 is taken.
+      - "${SKIMR_PORT:-8080}:8080"
+    volumes:
+      # Favicons, keys and logs; the articles live in Postgres.
+      - skimr-data:/data
+    environment:
+      SKIMR__Database__Provider: Postgres
+      SKIMR__Database__ConnectionString: "Host=db;Database=skimr;Username=skimr;Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/.env}"
+      SKIMR__Registration__DefaultMode: InviteOnly
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: skimr
+      POSTGRES_USER: skimr
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/.env}
+    volumes:
+      - skimr-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skimr -d skimr"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  skimr-data:
+  skimr-db:

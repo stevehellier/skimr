@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd example for macOS (osx-arm64 release). As a login item for one user:
+    mkdir -p ~/Applications/Skimr && cp -R skimr-osx-arm64/* ~/Applications/Skimr/
+    xattr -dr com.apple.quarantine ~/Applications/Skimr     # unsigned binary
+    sed "s|/Users/YOU|$HOME|g" local.skimr.plist > ~/Library/LaunchAgents/local.skimr.plist
+    launchctl load ~/Library/LaunchAgents/local.skimr.plist
+  Logs: ~/Library/Application Support/Skimr/data/logs. Stop: launchctl unload ~/Library/LaunchAgents/local.skimr.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>local.skimr</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/YOU/Applications/Skimr/Skimr</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/YOU/Applications/Skimr</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>ASPNETCORE_HTTP_PORTS</key>
+    <string>8080</string>
+    <key>SKIMR__Storage__DataDirectory</key>
+    <string>/Users/YOU/Library/Application Support/Skimr/data</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOU/Library/Application Support/Skimr/stderr.log</string>
+</dict>
+</plist>
