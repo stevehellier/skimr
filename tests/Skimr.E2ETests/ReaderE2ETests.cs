@@ -4,11 +4,14 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Skimr.Infrastructure.Identity;
 using Skimr.UnitTests.Fetching;
+using Skimr.Web.Auth;
 
 namespace Skimr.E2ETests;
 
@@ -39,6 +42,7 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
                 $"""<html><head><title>Local site</title><link rel="alternate" type="application/rss+xml" href="/feed.xml"></head><body>Hi</body></html>""",
                 "text/html"));
             app.MapGet("/feed.xml", () => Results.Text(Rss(), "application/rss+xml"));
+            app.MapGet("/big.xml", () => Results.Text(Rss(60, "Big"), "application/rss+xml"));
         });
 
         _app = new KestrelFactory(new Dictionary<string, string>
@@ -76,10 +80,10 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         }
     }
 
-    private static string Rss() =>
-        "<rss version=\"2.0\"><channel><title>Local Feed</title><link>http://127.0.0.1/</link>" +
-        string.Concat(Enumerable.Range(1, 3).Select(i =>
-            $"<item><title>Local story {i}</title><guid>s{i}</guid><link>https://example.com/{i}</link>" +
+    private static string Rss(int count = 3, string name = "Local") =>
+        $"<rss version=\"2.0\"><channel><title>{name} Feed</title><link>http://127.0.0.1/</link>" +
+        string.Concat(Enumerable.Range(1, count).Select(i =>
+            $"<item><title>{name} story {i}</title><guid>{name}{i}</guid><link>https://example.com/{i}</link>" +
             $"<pubDate>{DateTime.UtcNow.AddHours(-i):R}</pubDate><description>&lt;p&gt;Body {i}&lt;/p&gt;</description></item>")) +
         "</channel></rss>";
 
@@ -146,14 +150,14 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
             health += $" afterReload={await page.Locator(".article-item").CountAsync()} console=[{string.Join(" | ", _consoleErrors)}]";
             throw new InvalidOperationException($"Articles never appeared. Feeds: {health}", ex);
         }
-        await Assertions.Expect(page.Locator("a.nav-link[href=''] .count")).ToHaveTextAsync("3");
+        await Assertions.Expect(page.Locator("a.nav-link[href=''] .count .n")).ToHaveTextAsync("3");
         await ShotAsync(page, "desktop-list");
 
         // ---- Keyboard ----------------------------------------------------------------------
         await page.Locator("body").PressAsync("j");
         await Assertions.Expect(page.Locator(".article-pane h2")).ToHaveTextAsync("Local story 1");
         (await ActiveElementIdAsync(page)).Should().Be("pane-title", "opening an article moves focus to it");
-        await Assertions.Expect(page.Locator("a.nav-link[href=''] .count")).ToHaveTextAsync("2", new() { Timeout = 5_000 });
+        await Assertions.Expect(page.Locator("a.nav-link[href=''] .count .n")).ToHaveTextAsync("2", new() { Timeout = 5_000 });
         await ShotAsync(page, "desktop-reading");
 
         await page.Keyboard.PressAsync("j");
@@ -164,7 +168,7 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         await page.Keyboard.PressAsync("m");
         await Assertions.Expect(page.Locator("li.article-item").First).ToHaveClassAsync(new Regex("\\bunread\\b"));
         await page.Keyboard.PressAsync("s");
-        await Assertions.Expect(page.Locator("a.nav-link[href='saved'] .count")).ToHaveTextAsync("1");
+        await Assertions.Expect(page.Locator("a.nav-link[href='saved'] .count .n")).ToHaveTextAsync("1");
 
         await page.Keyboard.PressAsync("?");
         await Assertions.Expect(page.Locator("#help-dialog")).ToBeVisibleAsync();
@@ -241,6 +245,112 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
             {
                 builder.UseSetting(key, value);
             }
+
+            // Revalidate sessions every second instead of every minute, so the disable test runs quickly.
+            builder.ConfigureTestServices(services =>
+            {
+                services.AddSingleton(new CircuitSessionOptions(TimeSpan.FromSeconds(1)));
+                services.Configure<SecurityStampValidatorOptions>(o => o.ValidationInterval = TimeSpan.Zero);
+            });
         }
+    }
+
+    // ---- Helpers for the shorter tests -----------------------------------------------------
+
+    private async Task<Guid> CreateUserAsync(string userName, bool isAdmin)
+    {
+        await using var scope = _app.Services.CreateAsyncScope();
+        if (_app.Services.GetRequiredService<SetupService>().Code is { } code)
+        {
+            (await _app.Services.GetRequiredService<SetupService>().CompleteAsync(code, "admin", Password, RegistrationMode.Closed, CancellationToken.None)).Succeeded.Should().BeTrue();
+        }
+
+        var result = await scope.ServiceProvider.GetRequiredService<AccountService>().CreateUserAsync(userName, Password, isAdmin, CancellationToken.None);
+        result.Succeeded.Should().BeTrue(string.Join(", ", result.Errors));
+        return result.UserId!.Value;
+    }
+
+    private async Task<IPage> SignInAsync(string userName)
+    {
+        var page = await NewPageAsync();
+        await page.GotoAsync(_baseUrl + "login");
+        await page.FillAsync("#username", userName);
+        await page.FillAsync("#password", Password);
+        await page.ClickAsync("button[type=submit]");
+        await Assertions.Expect(page.Locator("nav.nav-panel")).ToBeVisibleAsync();
+        return page;
+    }
+
+    private async Task SubscribeAsync(Guid userId, string path)
+    {
+        var library = _app.Services.GetRequiredService<Skimr.Infrastructure.Reading.LibraryService>();
+        (await library.SubscribeAsync(userId, _feeds.Url(path).AbsoluteUri, [], CancellationToken.None)).Succeeded.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Scrolling_marks_articles_read_and_loads_more()
+    {
+        var userId = await CreateUserAsync("scroller", isAdmin: false);
+        await SubscribeAsync(userId, "big.xml");
+        var page = await SignInAsync("scroller");
+        await Assertions.Expect(page.Locator("a.nav-link[href=''] .count .n")).ToHaveTextAsync("60", new() { Timeout = 20_000 });
+
+        await page.GotoAsync(_baseUrl + "settings");
+        await page.CheckAsync("text=When I open it or scroll past it in the list");
+        await Assertions.Expect(page.Locator(".alert.ok")).ToBeVisibleAsync();
+
+        await page.GotoAsync(_baseUrl);
+        await Assertions.Expect(page.Locator(".article-item")).ToHaveCountAsync(Skimr.Infrastructure.Reading.ReadingService.PageSize);
+
+        // Scroll to the bottom a few times: the end sentinel loads the next page, and everything
+        // scrolled up past the top of the viewport is marked read.
+        for (var i = 0; i < 40 && await page.Locator(".article-item").CountAsync() <= Skimr.Infrastructure.Reading.ReadingService.PageSize; i++)
+        {
+            await page.EvaluateAsync("() => window.scrollTo(0, document.body.scrollHeight)");
+            await page.WaitForTimeoutAsync(250);
+        }
+
+        await Assertions.Expect(page.Locator("a.nav-link[href=''] .count .n")).Not.ToHaveTextAsync("60", new() { Timeout = 10_000 });
+
+        (await page.Locator(".article-item").CountAsync()).Should().BeGreaterThan(Skimr.Infrastructure.Reading.ReadingService.PageSize, "infinite scroll loaded the next page");
+        await Assertions.Expect(page.Locator("li.article-item.read").First).ToBeVisibleAsync();
+        var remaining = int.Parse(await page.Locator("a.nav-link[href=''] .count .n").TextContentAsync() ?? "60", System.Globalization.CultureInfo.InvariantCulture);
+        remaining.Should().BeLessThan(60, "scrolling past articles marked them read");
+        await ShotAsync(page, "scroll-marked-read");
+        _consoleErrors.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_disabled_users_open_tab_stops_working()
+    {
+        var adminId = await CreateUserAsync("boss", isAdmin: true);
+        var userId = await CreateUserAsync("leaver", isAdmin: false);
+        await SubscribeAsync(userId, "feed.xml");
+        var page = await SignInAsync("leaver");
+        await Assertions.Expect(page.Locator(".article-item")).ToHaveCountAsync(3, new() { Timeout = 20_000 });
+
+        await using (var scope = _app.Services.CreateAsyncScope())
+        {
+            (await scope.ServiceProvider.GetRequiredService<AccountService>().SetDisabledAsync(adminId, userId, true, CancellationToken.None)).Succeeded.Should().BeTrue();
+        }
+
+        // The open tab is sent to sign in (the redirect is aborted here so the page stays put),
+        // and the page can't act as the user any more. SignedOutCircuitGuardTests proves the
+        // server drops a modified client's events even if it ignores the redirect.
+        // The guard closes, then asks the browser to go to /login; wait for that attempt rather than a fixed time.
+        var redirected = new TaskCompletionSource();
+        await page.RouteAsync("**/login**", async route =>
+        {
+            redirected.TrySetResult();
+            await route.AbortAsync();
+        });
+        await redirected.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        await page.Locator("body").PressAsync("j");
+        await page.WaitForTimeoutAsync(1_000);
+        await Assertions.Expect(page.Locator(".article-pane")).ToHaveCountAsync(0);
+
+        var stillReadable = await _app.Services.GetRequiredService<Skimr.Infrastructure.Reading.ReadingService>()
+            .GetNavAsync(userId, CancellationToken.None);
+        stillReadable.AllUnread.Should().Be(3, "nothing was marked read after the account was disabled");
     }
 }

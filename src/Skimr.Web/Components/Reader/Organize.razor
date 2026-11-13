@@ -6,6 +6,7 @@
 @inject TimeProvider Time
 
 <PageTitle>Organise · Skimr</PageTitle>
+<SessionWatch />
 
 <h1>Organise</h1>
 
@@ -124,6 +125,7 @@
     private IReadOnlyList<SourceDetails> _sources = [];
     private readonly Dictionary<long, Edit> _edits = [];
     private string _newFolder = "";
+    private bool _busy;
     private string? _message;
     private bool _messageIsError;
     private readonly HashSet<long> _confirmDelete = [];
@@ -182,9 +184,22 @@
 
     private async Task CreateFolderAsync()
     {
-        Show(await Library.CreateFolderAsync(_userId, _newFolder, CancellationToken.None), "Folder created.");
-        _newFolder = "";
-        await LoadAsync();
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            Show(await Library.CreateFolderAsync(_userId, _newFolder, CancellationToken.None), "Folder created.");
+            _newFolder = "";
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
     private async Task RenameFolderAsync(long id, string? name)

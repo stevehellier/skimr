@@ -91,7 +91,18 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
             .ToListAsync(cancellationToken);
         db.UserArticles.AddRange(recent.Select(a => new UserArticle { UserId = userId, ArticleId = a.Id, FeedId = feedId, PublishedAt = a.PublishedAt }));
 
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // A double-click or a second tab subscribed the same user at the same moment and won.
+            await using var again = await contexts.CreateDbContextAsync(cancellationToken);
+            var winner = await again.Subscriptions.Where(s => s.UserId == userId && s.FeedId == feedId).Select(s => (long?)s.Id).SingleOrDefaultAsync(cancellationToken);
+            return winner is { } id ? LibraryResult.Ok(id) : LibraryResult.Fail("Couldn't subscribe just now. Try again.");
+        }
+
         scheduler.TryEnqueue(feedId);
         return LibraryResult.Ok(subscription.Id);
     }
@@ -237,7 +248,16 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
         var order = (await db.Folders.Where(f => f.UserId == userId).MaxAsync(f => (int?)f.SortOrder, cancellationToken) ?? -1) + 1;
         var folder = new Folder { UserId = userId, Name = clean, SortOrder = order };
         db.Folders.Add(folder);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // Same name created at the same moment (double-click): the unique index caught it.
+            return LibraryResult.Fail("You already have a folder with that name.");
+        }
+
         return LibraryResult.Ok(folder.Id);
     }
 

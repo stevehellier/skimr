@@ -4,22 +4,30 @@
     <ul class="nav-list" role="list">
         <li>@Link("", "All", Nav.AllUnread, ReaderView.All)</li>
         <li>@Link("today", "Today", Nav.TodayUnread, ReaderView.Today)</li>
-        <li>@Link("saved", "Read Later", Nav.SavedCount, ReaderView.Saved)</li>
+        <li>@Link("saved", "Read Later", Nav.SavedCount, ReaderView.Saved, "saved")</li>
     </ul>
 
     @foreach (var folder in Nav.Folders)
     {
-        <details class="nav-folder" open>
-            <summary>
+        var collapsed = _collapsed.Contains(folder.Id);
+        <div class="nav-folder">
+            @* A separate toggle button: a link inside <summary> would nest interactive controls. *@
+            <div class="nav-folder-row">
+                <button type="button" class="icon folder-toggle" aria-expanded="@(collapsed ? "false" : "true")" aria-controls="@($"folder-{folder.Id}")" @onclick="() => Toggle(folder.Id)">
+                    <span aria-hidden="true">@(collapsed ? "▸" : "▾")</span><span class="visually-hidden">@folder.Name sources</span>
+                </button>
                 @Link($"folder/{folder.Id}", folder.Name, folder.Unread, ReaderView.Folder(folder.Id))
-            </summary>
-            <ul class="nav-list sources" role="list">
-                @foreach (var source in folder.Sources)
-                {
-                    <li>@SourceLink(source)</li>
-                }
-            </ul>
-        </details>
+            </div>
+            @if (!collapsed)
+            {
+                <ul class="nav-list sources" role="list" id="@($"folder-{folder.Id}")">
+                    @foreach (var source in folder.Sources)
+                    {
+                        <li>@SourceLink(source)</li>
+                    }
+                </ul>
+            }
+        </div>
     }
 
     @if (Nav.Unfiled.Count > 0)
@@ -40,6 +48,8 @@
 </nav>
 
 @code {
+    private readonly HashSet<long> _collapsed = [];
+
     [Parameter, EditorRequired]
     public NavModel Nav { get; set; } = NavModel.Empty;
 
@@ -49,11 +59,20 @@
     [Parameter]
     public EventCallback OnAddSource { get; set; }
 
-    private RenderFragment Link(string href, string label, int count, ReaderView view) => @<a href="@href" class="nav-link @(view == Current ? "current" : null)" aria-current="@(view == Current ? "page" : null)">
+    private void Toggle(long folderId)
+    {
+        if (!_collapsed.Remove(folderId))
+        {
+            _collapsed.Add(folderId);
+        }
+    }
+
+    // The count is spoken as "7 unread" via hidden text; aria-label on a plain span is often ignored.
+    private RenderFragment Link(string href, string label, int count, ReaderView view, string countNoun = "unread") => @<a href="@href" class="nav-link @(view == Current ? "current" : null)" aria-current="@(view == Current ? "page" : null)">
         <span class="label">@label</span>
         @if (count > 0)
         {
-            <span class="count" aria-label="@($"{count} unread")">@count</span>
+            <span class="count"><span class="n">@count</span><span class="visually-hidden">@(" " + countNoun)</span></span>
         }
     </a>;
 
@@ -61,7 +80,7 @@
         @Link($"source/{source.SubscriptionId}", source.Title, source.Unread, ReaderView.Source(source.SubscriptionId))
         @if (source.HasError)
         {
-            <span class="source-error" title="This source failed on its last fetch" role="img" aria-label="Fetch error">!</span>
+            <span class="source-error" title="This source failed on its last fetch"><span aria-hidden="true">!</span><span class="visually-hidden">Fetch error</span></span>
         }
     </span>;
 }

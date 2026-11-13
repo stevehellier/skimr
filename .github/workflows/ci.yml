@@ -71,6 +71,8 @@ jobs:
           html=$(curl -sf http://localhost:8080/setup)
           assets=$(echo "$html" | grep -oE '(href|src)="[^"]+\.(css|js)"' | sed -E 's/^(href|src)="//; s/"$//' | sort -u)
           echo "$assets" | grep -q "_framework/blazor.web" || { echo "page doesn't reference blazor.web.js"; exit 1; }
+          # Loaded with a dynamic import(), so it never appears in page HTML; check it explicitly.
+          assets="$assets js/reader.js"
           for asset in $assets; do
             code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8080/${asset#/}")
             echo "$code $asset"

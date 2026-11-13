@@ -1,0 +1,20 @@
+@implements IDisposable
+@inject AuthenticationStateProvider Auth
+@inject NavigationManager Navigation
+
+@code {
+    // Sends the browser to sign in once this circuit's user is no longer valid (disabled,
+    // password reset). SignedOutCircuitGuard is what actually blocks access on the server;
+    // this is the courtesy redirect, run on the component's dispatcher.
+    protected override void OnInitialized() => Auth.AuthenticationStateChanged += OnChanged;
+
+    private void OnChanged(Task<AuthenticationState> task) => _ = InvokeAsync(async () =>
+    {
+        if ((await task).User.Identity?.IsAuthenticated != true)
+        {
+            Navigation.NavigateTo("login", forceLoad: true);
+        }
+    });
+
+    public void Dispose() => Auth.AuthenticationStateChanged -= OnChanged;
+}

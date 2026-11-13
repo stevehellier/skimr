@@ -7,6 +7,9 @@ using Skimr.Infrastructure.Identity;
 
 namespace Skimr.Web.Auth;
 
+/// <summary>How often a live circuit re-checks its user. Tests shorten it.</summary>
+internal sealed record CircuitSessionOptions(TimeSpan RevalidationInterval);
+
 /// <summary>
 /// Re-checks the security stamp of a live Blazor circuit every minute, so disabling a user or
 /// resetting their password also ends sessions that are already open.
@@ -14,10 +17,11 @@ namespace Skimr.Web.Auth;
 internal sealed class RevalidatingAuthenticationStateProvider(
     ILoggerFactory loggerFactory,
     IServiceScopeFactory scopes,
-    IOptions<IdentityOptions> options)
+    IOptions<IdentityOptions> options,
+    CircuitSessionOptions session)
     : RevalidatingServerAuthenticationStateProvider(loggerFactory)
 {
-    protected override TimeSpan RevalidationInterval => TimeSpan.FromMinutes(1);
+    protected override TimeSpan RevalidationInterval => session.RevalidationInterval;
 
     protected override async Task<bool> ValidateAuthenticationStateAsync(AuthenticationState state, CancellationToken cancellationToken)
     {

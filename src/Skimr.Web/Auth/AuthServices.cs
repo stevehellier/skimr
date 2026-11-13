@@ -81,6 +81,8 @@ internal static class AuthServices
 
         services.AddCascadingAuthenticationState();
         services.AddScoped<AuthenticationStateProvider, RevalidatingAuthenticationStateProvider>();
+        services.AddSingleton(new CircuitSessionOptions(TimeSpan.FromMinutes(1)));
+        services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler, SignedOutCircuitGuard>();
 
         services.AddSingleton(new AccountOptions(settings.DefaultRegistrationMode));
         services.AddScoped<AccountService>();

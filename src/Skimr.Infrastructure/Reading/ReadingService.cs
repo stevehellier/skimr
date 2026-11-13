@@ -213,6 +213,19 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, T
 
     public async Task SaveViewPreferenceAsync(Guid userId, ReaderView view, ArticleLayout layout, ArticleSort sort, bool unreadOnly, CancellationToken cancellationToken)
     {
+        try
+        {
+            await TrySaveViewPreferenceAsync(userId, view, layout, sort, unreadOnly, cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // Two quick clicks both inserted the first row for this view; the second is now an update.
+            await TrySaveViewPreferenceAsync(userId, view, layout, sort, unreadOnly, cancellationToken);
+        }
+    }
+
+    private async Task TrySaveViewPreferenceAsync(Guid userId, ReaderView view, ArticleLayout layout, ArticleSort sort, bool unreadOnly, CancellationToken cancellationToken)
+    {
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         var key = view.Key;
         var preference = await db.ViewPreferences.SingleOrDefaultAsync(v => v.UserId == userId && v.ViewKey == key, cancellationToken);
@@ -236,6 +249,19 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, T
     }
 
     public async Task SetMarkReadModeAsync(Guid userId, MarkReadMode mode, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await TrySetMarkReadModeAsync(userId, mode, cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // Lost a race to insert the first row; it exists now, so this is an update.
+            await TrySetMarkReadModeAsync(userId, mode, cancellationToken);
+        }
+    }
+
+    private async Task TrySetMarkReadModeAsync(Guid userId, MarkReadMode mode, CancellationToken cancellationToken)
     {
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         var preferences = await db.UserPreferences.SingleOrDefaultAsync(p => p.UserId == userId, cancellationToken);

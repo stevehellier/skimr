@@ -30,6 +30,7 @@ Phase 4 (Core UI) done: reader with nav and unread counts, three layouts, reader
 - Every page needs a signed-in user (fallback policy). Anything anonymous must say so explicitly: `[AllowAnonymous]` or `.AllowAnonymous()`.
 - Reader pages are Interactive Server with `prerender: false` (PLAN D42): load data in `OnInitialized/OnParametersSet`, start JS in `OnAfterRenderAsync(firstRender)`. UI services use `IDbContextFactory`, one context per call (D46).
 - Every reading/library service method takes the signed-in user id and filters by it; never trust ids from the browser.
+- Interactive pages include `<SessionWatch />`; `SignedOutCircuitGuard` blocks circuits whose user was disabled (PLAN D49). Event handlers that insert must ignore re-entry while busy, and services must treat a unique-key violation as "already exists" (D50).
 - Account forms are static SSR. Blazor form names must be unique per page; for per-row actions use one named form plus `<button form="id" name="Model.Command" value="...">`.
 
 ## Conventions
@@ -65,4 +66,4 @@ Config order: `appsettings.json` → env vars `SKIMR__Section__Key` → command 
 
 ## Decisions
 
-See `docs/PLAN.md` §4 (D1–D48). Add new decisions there, not here.
+See `docs/PLAN.md` §4 (D1–D50). Add new decisions there, not here.

@@ -526,24 +526,14 @@ table.shortcuts th {
   margin-top: 0.5rem;
 }
 
-.nav-folder > summary {
-  list-style: none;
+.nav-folder-row {
   display: flex;
-  cursor: pointer;
+  align-items: center;
 }
 
-.nav-folder > summary::-webkit-details-marker {
-  display: none;
-}
-
-.nav-folder > summary::before {
-  content: "▸";
-  padding: 0.3rem 0 0 0.3rem;
+.folder-toggle {
   color: var(--muted);
-}
-
-.nav-folder[open] > summary::before {
-  content: "▾";
+  padding: 0.2rem 0.3rem;
 }
 
 .nav-heading {

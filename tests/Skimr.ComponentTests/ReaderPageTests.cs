@@ -95,7 +95,7 @@ public sealed class ReaderPageTests : BunitContext
         return reader;
     }
 
-    private static string AllCount(IRenderedComponent<Reader> reader) => reader.Find("a.nav-link[href=''] .count").TextContent;
+    private static string AllCount(IRenderedComponent<Reader> reader) => reader.Find("a.nav-link[href=''] .count .n").TextContent;
 
     [Fact]
     public void Shows_the_users_articles_newest_first_with_nav_counts()
@@ -137,7 +137,7 @@ public sealed class ReaderPageTests : BunitContext
             var item = reader.FindAll("li.article-item")[1];
             item.ClassList.Should().Contain("unread", "m toggled it back to unread");
             item.QuerySelectorAll(".item-actions button")[0].GetAttribute("aria-pressed").Should().Be("true", "s saved it");
-            reader.Find("a.nav-link[href='saved'] .count").TextContent.Should().Be("1");
+            reader.Find("a.nav-link[href='saved'] .count .n").TextContent.Should().Be("1");
         });
     }
 

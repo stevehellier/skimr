@@ -83,7 +83,8 @@
 
     private async Task DiscoverAsync()
     {
-        if (string.IsNullOrWhiteSpace(_input))
+        // A second click arrives while the first is still awaiting; ignore it.
+        if (_busy || string.IsNullOrWhiteSpace(_input))
         {
             return;
         }
@@ -118,7 +119,7 @@
 
     private async Task SubscribeAsync()
     {
-        if (_choice is null)
+        if (_busy || _choice is null)
         {
             return;
         }

@@ -20,7 +20,7 @@ public sealed class NavPanelTests : BunitContext
         Render<NavPanel>(p => p.Add(x => x.Nav, Nav).Add(x => x.Current, current));
 
     private static string? CountFor(IRenderedComponent<NavPanel> nav, string label) =>
-        nav.FindAll("a.nav-link").Single(a => a.QuerySelector(".label")!.TextContent == label).QuerySelector(".count")?.TextContent;
+        nav.FindAll("a.nav-link").Single(a => a.QuerySelector(".label")!.TextContent == label).QuerySelector(".count .n")?.TextContent;
 
     [Fact]
     public void Shows_unread_counts_for_views_folders_and_sources()
@@ -47,7 +47,10 @@ public sealed class NavPanelTests : BunitContext
     [Fact]
     public void Counts_have_an_accessible_label()
     {
-        Render(ReaderView.All).Find("a[href='today'] .count").GetAttribute("aria-label").Should().Be("7 unread");
+        var nav = Render(ReaderView.All);
+
+        nav.Find("a[href='today'] .count").TextContent.Should().Be("7 unread");
+        nav.Find("a[href='today'] .count .visually-hidden").TextContent.Should().Be(" unread");
     }
 
     [Fact]
@@ -64,10 +67,25 @@ public sealed class NavPanelTests : BunitContext
     {
         var nav = Render(ReaderView.All);
 
-        var news = nav.FindAll("details.nav-folder")[0];
+        var news = nav.FindAll("div.nav-folder")[0];
         news.QuerySelectorAll(".sources a.nav-link").Select(a => a.GetAttribute("href")).Should().Equal("source/10", "source/11");
         nav.FindAll(".source-error").Should().ContainSingle("only the Guardian failed")
-            .Which.GetAttribute("aria-label").Should().Be("Fetch error");
+            .Which.TextContent.Should().Be("!Fetch error");
+    }
+
+    [Fact]
+    public void Folders_collapse_with_an_accessible_toggle()
+    {
+        var nav = Render(ReaderView.All);
+        var toggle = nav.FindAll("button.folder-toggle")[0];
+        toggle.GetAttribute("aria-expanded").Should().Be("true");
+        toggle.GetAttribute("aria-controls").Should().Be("folder-1");
+
+        toggle.Click();
+
+        nav.FindAll("button.folder-toggle")[0].GetAttribute("aria-expanded").Should().Be("false");
+        nav.FindAll("#folder-1").Should().BeEmpty();
+        nav.FindAll("summary").Should().BeEmpty("no links nested inside summary");
     }
 
     [Fact]
@@ -76,7 +94,7 @@ public sealed class NavPanelTests : BunitContext
         var clicked = false;
         var nav = Render<NavPanel>(p => p.Add(x => x.Nav, Nav).Add(x => x.OnAddSource, () => clicked = true));
 
-        nav.Find("button").Click();
+        nav.Find("button.secondary").Click();
 
         clicked.Should().BeTrue();
     }

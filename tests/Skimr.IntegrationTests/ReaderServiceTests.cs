@@ -104,6 +104,36 @@ public abstract class ReaderServiceTests(AppFixture fixture)
     }
 
     [Fact]
+    public async Task A_double_click_on_subscribe_leaves_one_subscription_and_no_duplicate_rows()
+    {
+        var (url, feedId, _) = await NewFeedWithArticlesAsync(5);
+        var alice = await NewUserAsync();
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => Library.SubscribeAsync(alice, url, [], Ct)));
+
+        results.Should().OnlyContain(r => r.Succeeded);
+        results.Select(r => r.Id).Distinct().Should().ContainSingle();
+        (await DbAsync(db => db.Subscriptions.CountAsync(s => s.UserId == alice && s.FeedId == feedId, Ct))).Should().Be(1);
+        (await DbAsync(db => db.UserArticles.CountAsync(u => u.UserId == alice && u.FeedId == feedId, Ct))).Should().Be(5);
+    }
+
+    [Fact]
+    public async Task Racing_first_writes_of_preferences_and_folders_do_not_throw()
+    {
+        var alice = await NewUserAsync();
+
+        await Task.WhenAll(Enumerable.Range(0, 4).Select(i =>
+            Reading.SaveViewPreferenceAsync(alice, ReaderView.Today, (ArticleLayout)(i % 3), ArticleSort.Newest, true, Ct)));
+        await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => Reading.SetMarkReadModeAsync(alice, MarkReadMode.Manual, Ct)));
+        var folders = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => Library.CreateFolderAsync(alice, "Same", Ct)));
+
+        (await DbAsync(db => db.ViewPreferences.CountAsync(v => v.UserId == alice, Ct))).Should().Be(1);
+        (await Reading.GetMarkReadModeAsync(alice, Ct)).Should().Be(MarkReadMode.Manual);
+        folders.Count(r => r.Succeeded).Should().Be(1);
+        (await Library.ListFoldersAsync(alice, Ct)).Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task Unsubscribing_keeps_saved_articles_but_drops_the_rest_and_stops_fetching()
     {
         var (url, feedId, articleIds) = await NewFeedWithArticlesAsync(3);

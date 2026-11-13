@@ -149,6 +149,8 @@ Folders map to `user/-/label/<name>`, Read Later to `starred`. Boards are not ex
 | D45 | Mark-read modes: on open (default), on open or scroll past, manual only. Per user | Spec |
 | D46 | UI services (`ReadingService`, `LibraryService`) take `IDbContextFactory` and use one context per call; `AddDbContextFactory` also registers the scoped context Identity and the refresher use | An interactive circuit outlives any one operation, so a circuit-scoped context would go stale and hit concurrency errors |
 | D47 | `/` (search) and full-text, OPML, boards arrive in Phase 5 with search | Not wired to nothing in the meantime |
+| D49 | Open interactive tabs lose access as soon as their user is disabled or their password is reset: `SignedOutCircuitGuard` drops every inbound event and JS call on the server once revalidation (every minute) flips the circuit to anonymous, and `SessionWatch` sends the browser to sign in | Pages hold the user id they started with; without a server-side gate a disabled user's open tab would keep working |
+| D50 | Check-then-insert paths (subscribe, create folder, first save of preferences) catch the unique-key violation and treat the row as existing; UI handlers ignore a second click while busy | Blazor Server runs a second event while the first awaits; an unhandled `DbUpdateException` would end the circuit |
 | D48 | Inputs, selects and outlined buttons use `--control-border` (3:1 against backgrounds); `--border` stays for decorative dividers. A unit test checks every colour pairing for AA in both themes | WCAG 1.4.11 non-text contrast |
 
 ## 5. Dependencies (all pre-approved by the stack; listed so later PRs don't stall)

@@ -2,30 +2,29 @@
 
 ## dotnet test (local, Windows, SDK 10.0.401, Docker Desktop for Postgres 17, Playwright Chromium)
 
-```
-Running tests from C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64)
-Running tests from C:\Users\Steve\Projects\Skimr\tests\Skimr.E2ETests\bin\Debug\net10.0\Skimr.E2ETests.dll (net10.0|x64)
+```nRunning tests from C:\Users\Steve\Projects\Skimr\tests\Skimr.E2ETests\bin\Debug\net10.0\Skimr.E2ETests.dll (net10.0|x64)
 Running tests from C:\Users\Steve\Projects\Skimr\tests\Skimr.ComponentTests\bin\Debug\net10.0\Skimr.ComponentTests.dll (net10.0|x64)
+Running tests from C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64)
 Running tests from C:\Users\Steve\Projects\Skimr\tests\Skimr.UnitTests\bin\Debug\net10.0\Skimr.UnitTests.dll (net10.0|x64)
-C:\Users\Steve\Projects\Skimr\tests\Skimr.ComponentTests\bin\Debug\net10.0\Skimr.ComponentTests.dll (net10.0|x64) passed (15s 074ms)
-C:\Users\Steve\Projects\Skimr\tests\Skimr.UnitTests\bin\Debug\net10.0\Skimr.UnitTests.dll (net10.0|x64) passed (17s 233ms)
-C:\Users\Steve\Projects\Skimr\tests\Skimr.E2ETests\bin\Debug\net10.0\Skimr.E2ETests.dll (net10.0|x64) passed (31s 595ms)
-C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64) passed (1m 19s 575ms)
+C:\Users\Steve\Projects\Skimr\tests\Skimr.ComponentTests\bin\Debug\net10.0\Skimr.ComponentTests.dll (net10.0|x64) passed (14s 232ms)
+C:\Users\Steve\Projects\Skimr\tests\Skimr.UnitTests\bin\Debug\net10.0\Skimr.UnitTests.dll (net10.0|x64) passed (17s 035ms)
+C:\Users\Steve\Projects\Skimr\tests\Skimr.E2ETests\bin\Debug\net10.0\Skimr.E2ETests.dll (net10.0|x64) passed (43s 626ms)
+C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64) passed (1m 14s 997ms)
 
 Test run summary: Passed!
-  C:\Users\Steve\Projects\Skimr\tests\Skimr.ComponentTests\bin\Debug\net10.0\Skimr.ComponentTests.dll (net10.0|x64) passed (15s 074ms)
-  C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64) passed (1m 19s 575ms)
-  C:\Users\Steve\Projects\Skimr\tests\Skimr.E2ETests\bin\Debug\net10.0\Skimr.E2ETests.dll (net10.0|x64) passed (31s 595ms)
-  C:\Users\Steve\Projects\Skimr\tests\Skimr.UnitTests\bin\Debug\net10.0\Skimr.UnitTests.dll (net10.0|x64) passed (17s 233ms)
+  C:\Users\Steve\Projects\Skimr\tests\Skimr.UnitTests\bin\Debug\net10.0\Skimr.UnitTests.dll (net10.0|x64) passed (17s 035ms)
+  C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64) passed (1m 14s 997ms)
+  C:\Users\Steve\Projects\Skimr\tests\Skimr.E2ETests\bin\Debug\net10.0\Skimr.E2ETests.dll (net10.0|x64) passed (43s 626ms)
+  C:\Users\Steve\Projects\Skimr\tests\Skimr.ComponentTests\bin\Debug\net10.0\Skimr.ComponentTests.dll (net10.0|x64) passed (14s 232ms)
 
-  total: 359
+  total: 369
   failed: 0
-  succeeded: 359
+  succeeded: 369
   skipped: 0
-  duration: 1m 20s 590ms
+  duration: 1m 16s 224ms
 ```
 
-359 passed, 0 failed: 234 unit, 106 integration (SQLite and Postgres), 18 component (bUnit), 1 E2E (Playwright).
+369 passed, 0 failed: 237 unit, 110 integration (SQLite and Postgres), 19 component (bUnit), 3 E2E (Playwright).
 
 ## Acceptance criteria
 
@@ -39,6 +38,8 @@ Test run summary: Passed!
 | Keyboard-only use | Playwright: j, k, m, s, ?, Esc, Shift+A, g s; focus moves to the article heading on open and back to the list item on close | **Pass, real browser** |
 | Phone width | Playwright at 390×844: nav hidden, drawer opens and closes, article full-screen, no horizontal overflow | **Pass, real browser** |
 | Theme persists | Playwright: dark survives a reload (cookie + server-rendered `data-theme`) | **Pass, real browser** |
+| Mark read on scroll, infinite scroll | Playwright: 60-item feed, mark-on-scroll mode, scroll to the bottom; more than 40 items load and the unread count drops | **Pass, real browser** |
+| A disabled user's open tab | Playwright: user signed in with the reader open, admin disables them, the tab is sent to sign in and nothing more is read as them. `SignedOutCircuitGuardTests` proves the server drops events after sign-out even if a client ignores the redirect (seen failing without the guard) | Pass |
 | AA contrast | `ContrastTests`: 21 pairings × 2 themes computed from `app.css` tokens (table below) | Pass |
 | No inline style or script in components | `CspGuardTests` over every `.razor` file | Pass |
 
@@ -49,6 +50,13 @@ Not checked: a screen reader pass (NVDA/VoiceOver), and real phone hardware (onl
 1. Articles from a newly added source never appeared without a manual reload. Navigating to the new source creates a new page instance, and the old one held the polling task. Empty source views now poll for up to 30 s.
 2. Pressing Escape to close a dialog also closed the open article. While a dialog is open, it now owns the keyboard.
 3. On a phone the nav drawer covered its own toggle, so it couldn't be closed. A Close button was added inside the drawer.
+
+## Pre-merge review fixes (each test seen failing before its fix)
+
+1. **A disabled user's open tab kept working.** Pages read the user id once. The new `SignedOutCircuitGuard` drops every inbound event and JS call once the circuit's user goes anonymous, and `SessionWatch` redirects to sign in (D49).
+2. **Double-clicks raced inserts and ended the session.** On Postgres both races threw `23505` duplicate-key errors before the fix; SQLite serialises writes and can't show it. Services now treat a unique-key violation as already existing, and handlers ignore re-entry while busy (D50).
+3. **`js/reader.js` (dynamic import) wasn't in the CI Docker asset check.** It is now; locally the published image returned 200.
+4. **Two nav accessibility problems:** a folder link inside `<summary>` (now a separate `aria-expanded` toggle), and an `aria-label` on a plain span (now visually hidden text).
 
 ## Contrast (WCAG 2.2 AA: text 4.5:1, input borders and focus ring 3:1)
 
@@ -74,4 +82,4 @@ Not checked: a screen reader pass (NVDA/VoiceOver), and real phone hardware (onl
 
 ## Screenshots (headless Chromium)
 
-`results/phase4-e2e/`: `desktop-list`, `desktop-reading`, `desktop-dark`, `phone-list`, `phone-nav`, `phone-reading`.
+`results/phase4-e2e/`: `desktop-list`, `desktop-reading`, `desktop-dark`, `phone-list`, `phone-nav`, `phone-reading`, `scroll-marked-read`.
