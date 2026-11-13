@@ -173,6 +173,14 @@ public sealed class ProviderClientTests : IAsyncLifetime
         _requests.Single().Headers.ContainsKey("Authorization").Should().BeFalse();
     }
 
+    [Fact]
+    public async Task A_reasoning_models_think_block_is_not_part_of_the_summary()
+    {
+        _replies.Enqueue((200, """{"choices":[{"message":{"content":"<think>The user wants a summary.</think>\n\nThe real summary."}}]}"""));
+
+        (await OpenAi().SummariseAsync(new AiArticle("T", "B"), Ct)).Should().Be("The real summary.");
+    }
+
     // ---- Parsing ------------------------------------------------------------------------
 
     [Theory]
@@ -180,6 +188,7 @@ public sealed class ProviderClientTests : IAsyncLifetime
     [InlineData("Sure! The matches are [2].", new[] { 1 })]
     [InlineData("[]", new int[0])]
     [InlineData("[3,3]", new[] { 2 })]
+    [InlineData("<think>Is it [0] or [9]? Article 2 is about Rust.</think>[2]", new[] { 1 })]
     public void Match_answers_become_article_indexes(string answer, int[] expected)
     {
         ChatSummariser.ParseNumbers(answer, 3).Should().BeEquivalentTo(expected);

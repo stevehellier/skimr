@@ -63,12 +63,15 @@ internal abstract class ChatSummariser(OutboundHttp http, AiOptions options, Tim
         return ParseNumbers(answer, articles.Count);
     }
 
-    /// <summary>The first JSON array of whole numbers in the answer, as 0-based indexes in range.</summary>
+    /// <summary>
+    /// The last JSON array of whole numbers in the answer, as 0-based indexes in range. The last,
+    /// because reasoning models may think aloud ("maybe [1]?") before the real answer.
+    /// </summary>
     internal static IReadOnlySet<int> ParseNumbers(string answer, int count)
     {
-        var start = answer.IndexOf('[', StringComparison.Ordinal);
-        var end = start < 0 ? -1 : answer.IndexOf(']', start);
-        if (end < 0)
+        var end = answer.LastIndexOf(']');
+        var start = end < 0 ? -1 : answer.LastIndexOf('[', end);
+        if (start < 0)
         {
             throw new AiException("The model's answer wasn't a list of article numbers.");
         }

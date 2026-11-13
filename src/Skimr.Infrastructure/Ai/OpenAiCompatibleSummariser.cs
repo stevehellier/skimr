@@ -1,10 +1,11 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Skimr.Infrastructure.Fetching;
 
 namespace Skimr.Infrastructure.Ai;
 
 /// <summary>OpenAI-style /chat/completions over plain HTTP (PLAN D13): Ollama, LM Studio, vLLM, OpenAI.</summary>
-internal sealed class OpenAiCompatibleSummariser(OutboundHttp http, AiOptions options, TimeProvider time) : ChatSummariser(http, options, time)
+internal sealed partial class OpenAiCompatibleSummariser(OutboundHttp http, AiOptions options, TimeProvider time) : ChatSummariser(http, options, time)
 {
     protected override async Task<string> CompleteAsync(string system, string user, CancellationToken cancellationToken)
     {
@@ -32,12 +33,16 @@ internal sealed class OpenAiCompatibleSummariser(OutboundHttp http, AiOptions op
 
             if (choice.TryGetProperty("message", out var message) && message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String)
             {
-                return content.GetString()!;
+                // Reasoning models on Ollama and LM Studio (qwen3, deepseek-r1) put their thinking in the content.
+                return ThinkBlock().Replace(content.GetString()!, "").Trim();
             }
         }
 
         throw new AiException("The AI provider's answer had no message.");
     }
+
+    [GeneratedRegex(@"^\s*<think>.*?</think>", RegexOptions.Singleline)]
+    private static partial Regex ThinkBlock();
 
     private static string? ErrorMessage(JsonDocument json) =>
         json.RootElement.TryGetProperty("error", out var error) switch

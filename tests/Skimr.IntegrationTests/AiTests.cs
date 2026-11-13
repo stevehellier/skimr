@@ -102,8 +102,14 @@ public abstract class AiTests(AppFixture fixture)
         return feed.Id;
     });
 
-    /// <summary>Articles as ingest makes them: the article plus a row for each listed subscriber.</summary>
-    private static Task<List<long>> AddArticlesAsync(AiApp app, long feedId, IReadOnlyCollection<Guid> subscribers, params string[] titles) => app.WithAsync(async sp =>
+    /// <summary>
+    /// Articles as ingest makes them: the article plus a row for each listed subscriber. Fetched
+    /// five minutes ago, so they're past the matcher's settle window (D62).
+    /// </summary>
+    private static Task<List<long>> AddArticlesAsync(AiApp app, long feedId, IReadOnlyCollection<Guid> subscribers, params string[] titles) =>
+        AddArticlesAsync(app, feedId, subscribers, DateTime.UtcNow.AddMinutes(-5), titles);
+
+    private static Task<List<long>> AddArticlesAsync(AiApp app, long feedId, IReadOnlyCollection<Guid> subscribers, DateTime fetchedAt, params string[] titles) => app.WithAsync(async sp =>
     {
         var db = sp.GetRequiredService<SkimrDbContext>();
         var articles = titles.Select(t => new Article
@@ -115,7 +121,7 @@ public abstract class AiTests(AppFixture fixture)
             ContentHtml = "<p>body</p>",
             ContentHash = "h",
             PublishedAt = DateTime.UtcNow.AddMinutes(-1),
-            FetchedAt = DateTime.UtcNow,
+            FetchedAt = fetchedAt,
             LastSeenAt = DateTime.UtcNow,
         }).ToList();
         db.Articles.AddRange(articles);
@@ -303,6 +309,96 @@ public abstract class AiTests(AppFixture fixture)
 
         fake.Calls.Should().Be(1);
         (await Ai(app).ListFeedsAsync(userId, Ct)).Single().LastError.Should().Contain("limit");
+    }
+
+    [Fact]
+    public async Task Articles_fetched_in_the_last_two_minutes_wait_so_the_id_cursor_never_skips_one()
+    {
+        // On Postgres a newer id can commit before an older one; matching only settled articles
+        // means the cursor never moves past one that wasn't visible yet.
+        var fake = new FakeSummariser();
+        await using var app = NewApp(fake);
+        var userId = await NewUserAsync(app);
+        var feed = await NewFeedAsync(app);
+        var sub = await SubscribeAsync(app, userId, feed);
+        await Ai(app).CreateFeedAsync(userId, "Rust", "Rust news", [], [sub], Ct);
+        var fresh = await AddArticlesAsync(app, feed, [userId], DateTime.UtcNow, "Rust one", "Rust two");
+
+        await Ai(app).MatchPendingAsync(Ct);
+        fake.Calls.Should().Be(0, "nothing has settled yet");
+
+        await app.WithAsync(sp => sp.GetRequiredService<SkimrDbContext>().Articles.Where(a => fresh.Contains(a.Id))
+            .ExecuteUpdateAsync(s => s.SetProperty(a => a.FetchedAt, DateTime.UtcNow.AddMinutes(-3)), Ct));
+        await Ai(app).MatchPendingAsync(Ct);
+        fake.SentTitles.Should().Equal("Rust one", "Rust two");
+    }
+
+    [Fact]
+    public async Task Provider_downtime_does_not_use_up_the_daily_limit()
+    {
+        var fake = new FakeSummariser { Throw = new AiException("Ollama is off", transient: true) };
+        await using var app = NewApp(fake, dailyCalls: 3);
+        var userId = await NewUserAsync(app);
+        var feed = await NewFeedAsync(app);
+        var sub = await SubscribeAsync(app, userId, feed);
+        await Ai(app).CreateFeedAsync(userId, "Rust", "Rust news", [], [sub], Ct);
+        await AddArticlesAsync(app, feed, [userId], "Rust news item");
+
+        for (var pass = 0; pass < 5; pass++)
+        {
+            await Ai(app).MatchPendingAsync(Ct);
+        }
+
+        fake.Calls.Should().Be(5);
+        var used = await app.WithAsync(sp => sp.GetRequiredService<SkimrDbContext>().AiUsage.Where(u => u.UserId == userId).SumAsync(u => u.Calls, Ct));
+        used.Should().Be(0);
+        fake.Throw = null;
+        await Ai(app).MatchPendingAsync(Ct);
+        (await Ai(app).ListFeedsAsync(userId, Ct)).Single().LastError.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_failed_summary_from_a_provider_outage_is_not_charged()
+    {
+        var down = new DownSummariser();
+        var app = fixture.CreateFreshApp(("Ai:Provider", "Anthropic"), ("Ai:Model", "m"), ("Ai:ApiKey", "k"), ("Ai:DailyCallsPerUser", "1"));
+        await using var ai = new AiApp(app, app.WithWebHostBuilder(b => b.ConfigureTestServices(s => s.AddSingleton<ISummariser>(down))));
+        var userId = await NewUserAsync(ai);
+        var ids = await AddArticlesAsync(ai, await NewFeedAsync(ai), [userId], "One");
+
+        (await Ai(ai).SummariseAsync(userId, ids[0], Ct)).Failure.Should().Be(AiFailure.ProviderFailed);
+        (await Ai(ai).SummariseAsync(userId, ids[0], Ct)).Failure.Should().Be(AiFailure.ProviderFailed, "not LimitReached: the outage wasn't charged");
+    }
+
+    private sealed class DownSummariser : ISummariser
+    {
+        public Task<string> SummariseAsync(AiArticle article, CancellationToken cancellationToken) =>
+            throw new AiException("Couldn't reach the AI provider", transient: true);
+
+        public Task<IReadOnlySet<int>> MatchAsync(string rule, IReadOnlyList<AiArticle> articles, CancellationToken cancellationToken) =>
+            throw new AiException("Couldn't reach the AI provider", transient: true);
+    }
+
+    [Fact]
+    public async Task A_disabled_users_ai_feeds_stop_spending()
+    {
+        var fake = new FakeSummariser();
+        await using var app = NewApp(fake);
+        var userId = await NewUserAsync(app);
+        var feed = await NewFeedAsync(app);
+        var sub = await SubscribeAsync(app, userId, feed);
+        await Ai(app).CreateFeedAsync(userId, "Rust", "Rust news", [], [sub], Ct);
+        await AddArticlesAsync(app, feed, [userId], "Rust news item");
+        await app.WithAsync(async sp =>
+        {
+            var accounts = sp.GetRequiredService<AccountService>();
+            var admin = (await accounts.CreateUserAsync("ai-admin", "a long password here", true, Ct)).UserId!.Value;
+            return (await accounts.SetDisabledAsync(admin, userId, true, Ct)).Succeeded;
+        });
+
+        await Ai(app).MatchPendingAsync(Ct);
+
+        fake.Calls.Should().Be(0);
     }
 
     // ---- Ownership over HTTP --------------------------------------------------------------

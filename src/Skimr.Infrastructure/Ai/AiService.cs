@@ -41,6 +41,13 @@ public sealed partial class AiService(
     /// <summary>Batches per AI feed per worker pass, so one busy feed can't starve the rest.</summary>
     private const int BatchesPerPass = 5;
 
+    /// <summary>
+    /// Only articles fetched at least this long ago are matched. On Postgres ids are handed out at
+    /// insert, not commit, so a newer id can become visible before an older one; waiting until
+    /// ingest has surely committed keeps the id cursor from skipping the older article (D62).
+    /// </summary>
+    internal static readonly TimeSpan SettleWindow = TimeSpan.FromMinutes(2);
+
     public bool Available => options.Enabled && summariser is not null;
 
     public async Task<bool> IsEnabledForAsync(Guid userId, CancellationToken cancellationToken)
@@ -128,6 +135,12 @@ public sealed partial class AiService(
         }
         catch (AiException ex)
         {
+            if (ex.Transient)
+            {
+                // The provider was down or busy: don't charge the user for that.
+                await ReleaseCallAsync(userId, cancellationToken);
+            }
+
             LogSummaryFailed(articleId, ex.Message);
             return new(null, AiFailure.ProviderFailed, ex.Message);
         }
@@ -179,6 +192,16 @@ public sealed partial class AiService(
         }
 
         return false;
+    }
+
+    /// <summary>Gives back a call reserved for a request the provider couldn't serve.</summary>
+    private async Task ReleaseCallAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var day = time.GetUtcNow().UtcDateTime.Date;
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        await db.AiUsage
+            .Where(u => u.UserId == userId && u.Day == day && u.Calls > 0)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.Calls, u => u.Calls - 1), cancellationToken);
     }
 
     // ---- AI feeds ---------------------------------------------------------------------------
@@ -309,25 +332,39 @@ public sealed partial class AiService(
         }
 
         List<long> feedIds;
+        long ceiling;
         await using (var db = await contexts.CreateDbContextAsync(cancellationToken))
         {
+            // Disabled accounts (lockout until the end of time) stop spending the admin's budget.
+            var disabled = (await db.Users.Where(u => u.LockoutEnd != null).Select(u => new { u.Id, u.LockoutEnd }).ToListAsync(cancellationToken))
+                .Where(u => u.LockoutEnd == DateTimeOffset.MaxValue)
+                .Select(u => u.Id)
+                .ToList();
             feedIds = await db.AiFeeds
-                .Where(f => db.UserPreferences.Any(p => p.UserId == f.UserId && p.AiEnabled))
+                .Where(f => db.UserPreferences.Any(p => p.UserId == f.UserId && p.AiEnabled) && !disabled.Contains(f.UserId))
                 .OrderBy(f => f.Id)
                 .Select(f => f.Id)
                 .ToListAsync(cancellationToken);
+
+            // Walks ids downward from the newest, so it reads only the last few minutes of articles.
+            var settled = time.GetUtcNow().UtcDateTime - SettleWindow;
+            ceiling = await db.Articles
+                .OrderByDescending(a => a.Id)
+                .Where(a => a.FetchedAt <= settled)
+                .Select(a => a.Id)
+                .FirstOrDefaultAsync(cancellationToken);
         }
 
         foreach (var feedId in feedIds)
         {
-            for (var batch = 0; batch < BatchesPerPass && await MatchBatchAsync(feedId, cancellationToken); batch++)
+            for (var batch = 0; batch < BatchesPerPass && await MatchBatchAsync(feedId, ceiling, cancellationToken); batch++)
             {
             }
         }
     }
 
     /// <returns>True if a full batch was processed and there may be more.</returns>
-    private async Task<bool> MatchBatchAsync(long feedId, CancellationToken cancellationToken)
+    private async Task<bool> MatchBatchAsync(long feedId, long ceiling, CancellationToken cancellationToken)
     {
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         var feed = await db.AiFeeds.Include(f => f.Sources).SingleOrDefaultAsync(f => f.Id == feedId, cancellationToken);
@@ -346,7 +383,7 @@ public sealed partial class AiService(
 
         var cursor = feed.LastCheckedArticleId;
         var articles = await db.UserArticles
-            .Where(u => u.UserId == userId && watched.Contains(u.FeedId) && u.ArticleId > cursor)
+            .Where(u => u.UserId == userId && watched.Contains(u.FeedId) && u.ArticleId > cursor && u.ArticleId <= ceiling)
             .OrderBy(u => u.ArticleId)
             .Take(options.BatchSize)
             .Select(u => new { u.ArticleId, u.Article!.Title, Text = u.Article.SearchText ?? u.Article.Snippet ?? "" })
@@ -372,6 +409,7 @@ public sealed partial class AiService(
         }
         catch (AiException ex) when (ex.Transient)
         {
+            await ReleaseCallAsync(userId, cancellationToken);
             feed.LastError = ex.Message;
             await db.SaveChangesAsync(cancellationToken);
             return false;

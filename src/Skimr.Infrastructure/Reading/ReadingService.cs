@@ -144,15 +144,24 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, I
             .OrderBy(b => b.SortOrder).ThenBy(b => b.Name)
             .Select(b => new NavBoard(b.Id, b.Name, b.Articles.Count))
             .ToListAsync(cancellationToken);
-        var aiFeeds = await db.AiFeeds
+        var aiFeedRows = await db.AiFeeds
             .Where(f => f.UserId == userId)
             .OrderBy(f => f.Name)
-            .Select(f => new NavAiFeed(
-                f.Id,
-                f.Name,
-                db.AiFeedMatches.Count(m => m.AiFeedId == f.Id && db.UserArticles.Any(u => u.UserId == userId && u.ArticleId == m.ArticleId && !u.IsRead)),
-                f.LastError != null))
+            .Select(f => new { f.Id, f.Name, HasError = f.LastError != null })
             .ToListAsync(cancellationToken);
+        // Matches first, then which of those are unread, counted in memory: both queries are
+        // index lookups, where a join or per-feed EXISTS let SQLite scan (results/phase7-perf).
+        var aiFeedIds = aiFeedRows.Select(f => f.Id).ToList();
+        var aiMatches = aiFeedIds.Count == 0
+            ? []
+            : await db.AiFeedMatches.Where(m => aiFeedIds.Contains(m.AiFeedId)).Select(m => new { m.AiFeedId, m.ArticleId }).ToListAsync(cancellationToken);
+        var matchedIds = aiMatches.Select(m => m.ArticleId).Distinct().ToList();
+        var unreadMatched = matchedIds.Count == 0
+            ? []
+            : (await db.UserArticles.Where(u => u.UserId == userId && EF.Constant(matchedIds).Contains(u.ArticleId) && !u.IsRead).Select(u => u.ArticleId).ToListAsync(cancellationToken)).ToHashSet();
+        var aiFeeds = aiFeedRows
+            .Select(f => new NavAiFeed(f.Id, f.Name, aiMatches.Count(m => m.AiFeedId == f.Id && unreadMatched.Contains(m.ArticleId)), f.HasError))
+            .ToList();
 
         var navFolders = folders.Select(f =>
         {
@@ -596,8 +605,14 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, I
             case ViewKind.Search:
                 return mine.Where(_ => false);
             case ViewKind.AiFeed:
-                // Like boards, matches stay visible even if their source is later dropped.
-                return mine.Where(u => db.AiFeedMatches.Any(m => m.AiFeedId == view.Id && m.AiFeed!.UserId == userId && m.ArticleId == u.ArticleId));
+                // Like boards, matches stay visible even if their source is later dropped. The match
+                // ids are resolved first: a per-row EXISTS walked every row for sparse matches
+                // (950 ms at 200k articles, results/phase7-perf).
+                var matched = await db.AiFeedMatches
+                    .Where(m => m.AiFeedId == view.Id && m.AiFeed!.UserId == userId)
+                    .Select(m => m.ArticleId)
+                    .ToListAsync(cancellationToken);
+                return mine.Where(u => EF.Constant(matched).Contains(u.ArticleId));
         }
 
         var subscribed = mine.Where(u => db.Subscriptions.Any(s => s.UserId == userId && s.FeedId == u.FeedId));
