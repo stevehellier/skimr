@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.PostgreSql;
 
 namespace Skimr.IntegrationTests.Infrastructure;
@@ -34,6 +36,9 @@ public abstract class AppFixture : IAsyncLifetime
             }
         });
     }
+
+    public WebApplicationFactory<Program> WithServices(Action<IServiceCollection> configure) =>
+        Factory.WithWebHostBuilder(b => b.ConfigureTestServices(configure));
 
     public virtual async ValueTask DisposeAsync()
     {

@@ -23,6 +23,11 @@ public static class InfrastructureServices
 
         services.AddSingleton<ContentSanitizer>();
 
+        services.AddScoped<FeedRefresher>();
+        services.AddScoped<IFeedRefresher>(sp => sp.GetRequiredService<FeedRefresher>());
+        services.AddSingleton<FeedScheduler>();
+        services.AddHostedService(sp => sp.GetRequiredService<FeedScheduler>());
+
         return services;
     }
 }
