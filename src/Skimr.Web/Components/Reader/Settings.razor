@@ -7,6 +7,7 @@
 @using Skimr.Infrastructure.Reading
 @inject ReadingService Reading
 @inject AiService Ai
+@inject AiOptions AiSettings
 @inject IJSRuntime JS
 
 <PageTitle>Settings · Skimr</PageTitle>
@@ -55,7 +56,7 @@
         <p class="hint">Article summaries and AI feeds. When on, the text of the articles you summarise or filter is sent to the AI provider this server's admin has set up. Off until you turn it on.</p>
         <label class="check">
             <input type="checkbox" id="ai-enabled" checked="@_aiEnabled" @onchange="SetAiAsync" />
-            Send article text to the AI provider for summaries and AI feeds
+            Send article text to <strong data-testid="ai-host">@AiSettings.BaseUrl?.Host</strong> (model @AiSettings.Model) for summaries and AI feeds
         </label>
     </section>
 }
