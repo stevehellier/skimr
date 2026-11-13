@@ -281,10 +281,7 @@ internal static class RestApi
 
             if (patch.Saved is { } saved)
             {
-                foreach (var id in ids)
-                {
-                    await reading.SetSavedAsync(userId, id, saved, ct);
-                }
+                changed += await reading.SetSavedAsync(userId, ids, saved, ct);
             }
 
             return Results.Ok(new { changed });
