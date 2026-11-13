@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE rss [ <!ENTITY xxe SYSTEM "file:///__SECRET_PATH__"> ]>
+<rss version="2.0">
+<channel>
+  <title>XXE &xxe;</title>
+  <link>https://evil.example.com/</link>
+  <item><title>Steal &xxe;</title><guid>x1</guid></item>
+</channel>
+</rss>

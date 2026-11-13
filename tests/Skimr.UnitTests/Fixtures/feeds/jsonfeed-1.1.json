@@ -1,0 +1,26 @@
+{
+  "version": "https://jsonfeed.org/version/1.1",
+  "title": "JSON Feed Example",
+  "home_page_url": "https://json.example.com/",
+  "feed_url": "https://json.example.com/feed.json",
+  "description": "JSON things",
+  "hubs": [{ "type": "WebSub", "url": "https://hub.example.com/" }],
+  "items": [
+    {
+      "id": "1",
+      "url": "https://json.example.com/1",
+      "title": "JSON item",
+      "content_html": "<p>Hello <img src=\"/img.png\"></p>",
+      "summary": "Hello summary",
+      "image": "https://json.example.com/hero.png",
+      "date_published": "2026-11-01T10:00:00-05:00",
+      "date_modified": "2026-11-01T12:00:00-05:00",
+      "authors": [{ "name": "Jay Son" }]
+    },
+    {
+      "id": 2,
+      "content_text": "Text only item, no title. Line two.",
+      "date_published": "not a date"
+    }
+  ]
+}

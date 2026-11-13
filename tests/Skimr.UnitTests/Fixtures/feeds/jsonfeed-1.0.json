@@ -1,0 +1,7 @@
+{
+  "version": "https://jsonfeed.org/version/1",
+  "title": "Old JSON",
+  "items": [
+    { "id": "a", "url": "https://json1.example.com/a", "title": "Item A", "content_html": "<p>A</p>", "author": { "name": "Solo Author" } }
+  ]
+}

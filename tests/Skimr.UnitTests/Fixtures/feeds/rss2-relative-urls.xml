@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+<channel>
+  <title>Relative</title>
+  <link>https://rel.example.com/blog/</link>
+  <item>
+    <title>Relative link</title>
+    <link>/blog/posts/1</link>
+    <guid isPermaLink="false">rel-1</guid>
+    <description>&lt;p&gt;See &lt;a href="../about"&gt;about&lt;/a&gt; and &lt;img src="img/pic.png"&gt;&lt;/p&gt;</description>
+  </item>
+  <item>
+    <title>Bad link</title>
+    <link>ht!tp://[broken</link>
+    <guid isPermaLink="false">rel-2</guid>
+  </item>
+</channel>
+</rss>

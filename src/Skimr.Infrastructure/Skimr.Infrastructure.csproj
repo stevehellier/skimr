@@ -3,6 +3,16 @@
     <ProjectReference Include="..\Skimr.Application\Skimr.Application.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="System.ServiceModel.Syndication" />
+    <PackageReference Include="HtmlSanitizer" />
+    <PackageReference Include="AngleSharp" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Skimr is the Web project's assembly name. -->
+    <InternalsVisibleTo Include="Skimr" />
+    <InternalsVisibleTo Include="Skimr.UnitTests" />
+    <InternalsVisibleTo Include="Skimr.IntegrationTests" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+<channel>
+  <title>No guids</title>
+  <link>https://noguid.example.com/</link>
+  <item><title>Has link</title><link>https://noguid.example.com/a</link><pubDate>Wed, 04 Nov 2026 10:00:00 GMT</pubDate></item>
+  <item><title>Title and date only</title><pubDate>Wed, 04 Nov 2026 11:00:00 GMT</pubDate></item>
+  <item><title>Empty guid</title><guid></guid><link>https://noguid.example.com/c</link></item>
+  <item><title>Has link</title><link>https://noguid.example.com/a</link><pubDate>Wed, 04 Nov 2026 10:00:00 GMT</pubDate></item>
+</channel>
+</rss>

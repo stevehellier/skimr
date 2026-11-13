@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+<channel>
+  <title>Fish & Chips&nbsp;Weekly</title>
+  <link>https://fish.example.com/</link>
+  <item>
+    <title>Salt &mdash; and vinegar</title>
+    <link>https://fish.example.com/?a=1&b=2</link>
+    <guid>fish-1</guid>
+  </item>
+</channel>
+</rss>

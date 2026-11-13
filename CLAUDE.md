@@ -6,13 +6,14 @@ Full plan, data model and API surface: `docs/PLAN.md`.
 
 ## Status
 
-Phase 1 (Skeleton) done: config + validation, Serilog, health checks, SQLite/Postgres with migrations, security headers, base path, Dockerfile, CI. Next: Phase 2 (Domain and fetching).
+Phase 2 (Domain and fetching) done: entities, tolerant parsers, discovery, sanitiser, SSRF guard, refresher with conditional GET and backoff, bounded scheduler, WebSub. Next: Phase 3 (Auth and multi-user).
 
 ## Architecture
 
 - `Skimr.Domain` — entities only, no package references.
-- `Skimr.Application` — use cases and interfaces. Depends on Domain only.
-- `Skimr.Infrastructure` — EF Core, fetching, parsing, sanitising, SSRF guard, extraction, AI clients.
+- `Skimr.Application` — empty for now (PLAN D30). Depends on Domain only.
+- `Skimr.Infrastructure` — EF Core, fetching, parsing, sanitising, SSRF guard, extraction, AI clients. Interfaces only where a test needs a fake (`IOutboundHttp`, `IFeedRefresher`).
+- Every string from a feed is stored through `StoredText.Fit` (strips control chars Postgres rejects, respects column length).
 - `Skimr.Infrastructure.Sqlite` / `.Postgres` — per-provider migrations and search.
 - `Skimr.Web` — Blazor UI, REST + Google Reader + Fever APIs, auth, hosting, DI composition.
 
@@ -22,8 +23,9 @@ Phase 1 (Skeleton) done: config + validation, Serilog, health checks, SQLite/Pos
 
 - All feed and extracted HTML passes through `IHtmlSanitizer` **before** it is stored. Never render unsanitised HTML.
 - All outbound HTTP (feeds, full text, favicons, images, WebSub, AI) goes through the SSRF-guarded client. Never `new HttpClient()`.
-- XML readers: `DtdProcessing = Prohibit`, `XmlResolver = null`.
+- XML readers: `DtdProcessing = Ignore`, `XmlResolver = null` (PLAN D25). Never `DtdProcessing.Parse`, never a resolver.
 - No inline `<script>` or `style=""` in our markup — the CSP forbids them.
+- New config keys are read and validated in `SkimrSettings.Load` (PLAN D28), never `IOptions.ValidateOnStart`.
 - No secrets in the repo. `.env` must be in `.gitignore` before one is created.
 - API tokens stored as SHA-256 only; the plain token is shown once.
 
@@ -59,4 +61,4 @@ Config order: `appsettings.json` → env vars `SKIMR__Section__Key` → command 
 
 ## Decisions
 
-See `docs/PLAN.md` §4 (D1–D23). Add new decisions there, not here.
+See `docs/PLAN.md` §4 (D1–D31). Add new decisions there, not here.
