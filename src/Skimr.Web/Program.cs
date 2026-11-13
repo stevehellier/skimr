@@ -1,0 +1,118 @@
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
+using Serilog;
+using Skimr.Infrastructure.Persistence;
+using Skimr.Infrastructure.Postgres;
+using Skimr.Infrastructure.Sqlite;
+using Skimr.Web.Components;
+using Skimr.Web.Configuration;
+using Skimr.Web.Hosting;
+
+if (args is ["--healthcheck", ..])
+{
+    return await HealthProbe.RunAsync(args);
+}
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Order: appsettings -> environment (SKIMR__Section__Key) -> command line.
+builder.Configuration.AddEnvironmentVariables("SKIMR__");
+builder.Configuration.AddCommandLine(args);
+
+SkimrSettings settings;
+try
+{
+    settings = SkimrSettings.Load(builder.Configuration, builder.Environment.ContentRootPath);
+}
+catch (InvalidConfigurationException ex)
+{
+    await Console.Error.WriteLineAsync(ex.Message);
+    return 1;
+}
+
+builder.Services.AddSingleton(settings);
+
+// Keys live in the data directory so cookies survive restarts and container rebuilds.
+builder.Services.AddDataProtection()
+    .SetApplicationName("Skimr")
+    .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(settings.DataDirectory, "keys")));
+
+builder.Services.AddSerilog((services, logger) => logger
+    .ReadFrom.Configuration(builder.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext()
+    .WriteTo.Console()
+    .WriteTo.File(
+        Path.Combine(settings.DataDirectory, "logs", "skimr-.log"),
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 14),
+    preserveStaticLogger: true);
+
+builder.Services.AddDbContext<SkimrDbContext>(options => _ = settings.Provider switch
+{
+    DatabaseProvider.Sqlite => options.UseSkimrSqlite(settings.ConnectionString),
+    DatabaseProvider.Postgres => options.UseSkimrPostgres(settings.ConnectionString),
+    _ => throw new InvalidOperationException($"Unknown provider {settings.Provider}"),
+});
+
+builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    foreach (var proxy in settings.KnownProxies)
+    {
+        options.KnownProxies.Add(proxy);
+    }
+
+    foreach (var network in settings.KnownNetworks)
+    {
+        options.KnownIPNetworks.Add(network);
+    }
+});
+
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
+
+var app = builder.Build();
+
+try
+{
+    await DatabaseStartup.InitialiseAsync(app.Services, settings, app.Lifetime.ApplicationStopping);
+}
+catch (Exception ex)
+{
+    app.Logger.LogCritical(ex, "Database initialisation failed ({Provider}). Check Database:ConnectionString.", settings.Provider);
+    return 1;
+}
+
+app.UseForwardedHeaders();
+if (settings.BasePath.Length > 0)
+{
+    app.UsePathBase(settings.BasePath);
+}
+
+app.UseRouting();
+app.UseSecurityHeaders();
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Error", createScopeForErrors: true);
+    app.UseHsts();
+}
+
+app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+app.UseAntiforgery();
+
+app.MapHealthChecks("/health", new HealthCheckOptions { Predicate = _ => false });
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = c => c.Tags.Contains("ready") });
+
+app.MapStaticAssets();
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
+
+await app.RunAsync();
+return 0;
+
+public partial class Program;

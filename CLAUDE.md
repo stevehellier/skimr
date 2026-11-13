@@ -6,7 +6,7 @@ Full plan, data model and API surface: `docs/PLAN.md`.
 
 ## Status
 
-Planning. No code yet. Phase 1 (Skeleton) starts once the plan is approved.
+Phase 1 (Skeleton) done: config + validation, Serilog, health checks, SQLite/Postgres with migrations, security headers, base path, Dockerfile, CI. Next: Phase 2 (Domain and fetching).
 
 ## Architecture
 
@@ -43,7 +43,8 @@ Shell is PowerShell 7.
 
 ```powershell
 dotnet build                                   # 0 warnings required
-dotnet test                                    # Postgres tests need Docker running
+dotnet test                                    # Microsoft.Testing.Platform; Postgres tests need Docker running
+dotnet tool restore                            # pins dotnet-ef
 dotnet run --project src/Skimr.Web             # SQLite under ./data by default
 
 # Migrations (one set per provider)
@@ -51,11 +52,11 @@ dotnet ef migrations add <Name> --project src/Skimr.Infrastructure.Sqlite
 dotnet ef migrations add <Name> --project src/Skimr.Infrastructure.Postgres
 
 docker build -f deploy/Dockerfile -t skimr:dev .
-docker compose -f deploy/docker-compose.yml up -d
+docker compose -f deploy/docker-compose.yml up -d  # compose files arrive in Phase 8
 ```
 
 Config order: `appsettings.json` → env vars `SKIMR__Section__Key` → command line. Everything persistent lives under the data directory.
 
 ## Decisions
 
-See `docs/PLAN.md` §4 (D1–D18). Add new decisions there, not here.
+See `docs/PLAN.md` §4 (D1–D23). Add new decisions there, not here.

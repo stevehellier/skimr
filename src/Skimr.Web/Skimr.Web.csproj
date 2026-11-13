@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <AssemblyName>Skimr</AssemblyName>
+    <RootNamespace>Skimr.Web</RootNamespace>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Skimr.Infrastructure.Sqlite\Skimr.Infrastructure.Sqlite.csproj" />
+    <ProjectReference Include="..\Skimr.Infrastructure.Postgres\Skimr.Infrastructure.Postgres.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Serilog.Sinks.File" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Skimr.UnitTests" />
+    <InternalsVisibleTo Include="Skimr.IntegrationTests" />
+  </ItemGroup>
+</Project>

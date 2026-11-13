@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Skimr.Application/Skimr.Application.csproj" />
+    <Project Path="src/Skimr.Domain/Skimr.Domain.csproj" />
+    <Project Path="src/Skimr.Infrastructure.Postgres/Skimr.Infrastructure.Postgres.csproj" />
+    <Project Path="src/Skimr.Infrastructure.Sqlite/Skimr.Infrastructure.Sqlite.csproj" />
+    <Project Path="src/Skimr.Infrastructure/Skimr.Infrastructure.csproj" />
+    <Project Path="src/Skimr.Web/Skimr.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Skimr.IntegrationTests/Skimr.IntegrationTests.csproj" />
+    <Project Path="tests/Skimr.UnitTests/Skimr.UnitTests.csproj" />
+  </Folder>
+</Solution>

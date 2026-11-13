@@ -26,3 +26,7 @@ csharp_style_var_when_type_is_apparent = true:suggestion
 dotnet_style_qualification_for_field = false:suggestion
 dotnet_sort_system_directives_first = true
 dotnet_diagnostic.CA2007.severity = none
+
+[**/Migrations/*.cs]
+generated_code = true
+

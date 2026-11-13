@@ -122,6 +122,11 @@ Folders map to `user/-/label/<name>`, Read Later to `starred`. Boards are not ex
 | D16 | SQLite: WAL mode, busy timeout 5 s; fetch workers write in short transactions | SQLite allows one writer |
 | D17 | WebSub only when `PublicUrl` is configured | The hub needs a reachable callback URL |
 | D18 | Fever is required (Phase 6b), not optional | Agreed 2026-11-13 |
+| D19 | No HTTPS redirection in the app; HSTS only on HTTPS requests | Most installs sit behind a TLS-terminating proxy or run plain HTTP on a LAN; forcing a redirect breaks both |
+| D20 | Docker `HEALTHCHECK` probes `/health/ready`, not `/health` | An app that can't reach its database isn't usable, and compose `depends_on: service_healthy` needs that signal |
+| D21 | Data Protection keys persisted to `<data>/keys` | Cookies survive restarts and container rebuilds; backup stays "copy one folder". Keys aren't encrypted at rest; filesystem permissions protect them |
+| D22 | Tests run on Microsoft.Testing.Platform (opted in via `global.json`) | .NET 10 SDK no longer runs xUnit v3 through VSTest |
+| D23 | Serilog registered with `preserveStaticLogger: true` | Several hosts in one test process otherwise share one static logger and leave log files locked |
 
 ## 5. Dependencies (all pre-approved by the stack; listed so later PRs don't stall)
 
