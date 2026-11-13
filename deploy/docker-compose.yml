@@ -1,0 +1,24 @@
+# Skimr with SQLite: one container, everything persistent in the skimr-data volume.
+#   docker compose -f deploy/docker-compose.yml up -d --build
+# Then open http://localhost:8080 and enter the setup code from:
+#   docker compose -f deploy/docker-compose.yml logs skimr | grep "setup code"
+services:
+  skimr:
+    # Built from this checkout (the image registry is private). With access to it, use
+    # image: ghcr.io/stevehellier/skimr:latest instead of build:.
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: skimr:local
+    restart: unless-stopped
+    ports:
+      # Host port; change with SKIMR_PORT (in deploy/.env or the shell) if 8080 is taken.
+      - "${SKIMR_PORT:-8080}:8080"
+    volumes:
+      - skimr-data:/data
+    environment:
+      # Any setting can be given as SKIMR__Section__Key; see the README's configuration table.
+      SKIMR__Registration__DefaultMode: InviteOnly
+
+volumes:
+  skimr-data:

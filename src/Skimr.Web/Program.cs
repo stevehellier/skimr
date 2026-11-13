@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using Serilog;
 using Skimr.Infrastructure;
 using Skimr.Infrastructure.Content;
@@ -21,7 +22,16 @@ if (args is ["--healthcheck", ..])
     return await HealthProbe.RunAsync(args);
 }
 
-var builder = WebApplication.CreateBuilder(args);
+// A Windows service starts in System32; its files and appsettings.json are next to the exe.
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = WindowsServiceHelpers.IsWindowsService() ? AppContext.BaseDirectory : null,
+});
+
+// No-op unless started by the Service Control Manager (install.ps1). systemd and launchd run
+// the binary directly and read its console output.
+builder.Host.UseWindowsService(o => o.ServiceName = "Skimr");
 
 // Order: appsettings -> environment (SKIMR__Section__Key) -> command line.
 builder.Configuration.AddEnvironmentVariables("SKIMR__");
