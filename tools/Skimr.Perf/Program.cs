@@ -148,6 +148,27 @@ await using (var connection = new SqliteConnection(connectionString))
     await tx.CommitAsync();
 }
 
+// Five AI feeds with about 300 sparse matches each (one article in 667), as a month of filtering might leave.
+const int AiFeeds = 5;
+await using (var connection = new SqliteConnection(connectionString))
+{
+    await connection.OpenAsync();
+    await using var aiCmd = connection.CreateCommand();
+    aiCmd.CommandText =
+        "INSERT INTO AiFeeds (Id, UserId, Name, Rule, CreatedAt, LastCheckedArticleId) VALUES ($id, $user, $name, 'rule', $now, 0); " +
+        "INSERT INTO AiFeedMatches (AiFeedId, ArticleId, MatchedAt) SELECT $id, Id, $now FROM Articles WHERE Id % 667 = $id;";
+    var aiId = aiCmd.Parameters.Add("$id", SqliteType.Integer);
+    aiCmd.Parameters.AddWithValue("$user", userId.ToString().ToUpperInvariant());
+    var aiName = aiCmd.Parameters.Add("$name", SqliteType.Text);
+    aiCmd.Parameters.AddWithValue("$now", now.ToString("yyyy-MM-dd HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture));
+    for (var f = 1; f <= AiFeeds; f++)
+    {
+        aiId.Value = f;
+        aiName.Value = $"AI feed {f}";
+        await aiCmd.ExecuteNonQueryAsync();
+    }
+}
+
 seedTimer.Stop();
 if (analyzeStats)
     await using (var connection = new SqliteConnection(connectionString))
@@ -217,6 +238,15 @@ await TimeAsync("  Nav part: saved count and boards", async () =>
     await db.UserArticles.CountAsync(u => u.UserId == userId && u.IsSaved);
     await db.Boards.Where(b => b.UserId == userId).Select(b => new { b.Id, C = b.Articles.Count }).ToListAsync();
 });
+await TimeAsync("  Nav part: AI feed unread counts (5 feeds)", async () =>
+{
+    await using var db = await contexts.CreateDbContextAsync();
+    // The same two queries ReadingService.GetNavAsync runs.
+    var feeds = await db.AiFeeds.Where(f => f.UserId == userId).Select(f => f.Id).ToListAsync();
+    var matches = await db.AiFeedMatches.Where(m => feeds.Contains(m.AiFeedId)).Select(m => new { m.AiFeedId, m.ArticleId }).ToListAsync();
+    var ids = matches.Select(m => m.ArticleId).Distinct().ToList();
+    await db.UserArticles.Where(u => u.UserId == userId && EF.Constant(ids).Contains(u.ArticleId) && !u.IsRead).Select(u => u.ArticleId).ToListAsync();
+});
 await TimeAsync("First page: All, unread only", () => reading.GetArticlesAsync(userId, ReaderView.All, ArticleSort.Newest, true, null, ct), "< 100 ms");
 await TimeAsync("First page: All, everything", () => reading.GetArticlesAsync(userId, ReaderView.All, ArticleSort.Newest, false, null, ct), "< 100 ms");
 await TimeAsync("First page: Today", () => reading.GetArticlesAsync(userId, ReaderView.Today, ArticleSort.Newest, true, null, ct), "< 100 ms");
@@ -224,6 +254,7 @@ await TimeAsync("First page: a folder (25 sources)", () => reading.GetArticlesAs
 await TimeAsync("First page: one source", () => reading.GetArticlesAsync(userId, ReaderView.Source(firstSource), ArticleSort.Newest, true, null, ct), "< 100 ms");
 await TimeAsync("First page: oldest first", () => reading.GetArticlesAsync(userId, ReaderView.All, ArticleSort.Oldest, true, null, ct), "< 100 ms");
 var page = await reading.GetArticlesAsync(userId, ReaderView.All, ArticleSort.Newest, false, null, ct);
+await TimeAsync("First page: AI feed (sparse matches)", () => reading.GetArticlesAsync(userId, ReaderView.AiFeed(1), ArticleSort.Newest, true, null, ct), "< 100 ms");
 await TimeAsync("First page: Read Later", () => reading.GetArticlesAsync(userId, ReaderView.Saved, ArticleSort.Newest, false, null, ct), "< 100 ms");
 await TimeAsync("Next page (keyset)", () => reading.GetArticlesAsync(userId, ReaderView.All, ArticleSort.Newest, false, page.Next, ct), "< 100 ms");
 await TimeAsync("Search: rare word (Article 12345)", () => reading.SearchAsync(userId, new SearchQuery("12345"), null, ct));

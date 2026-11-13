@@ -152,6 +152,109 @@ namespace Skimr.Infrastructure.Postgres.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Skimr.Domain.AiFeed", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("LastCheckedArticleId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("LastCheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Rule")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("AiFeeds");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.AiFeedMatch", b =>
+                {
+                    b.Property<long>("AiFeedId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ArticleId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("MatchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("AiFeedId", "ArticleId");
+
+                    b.HasIndex("ArticleId");
+
+                    b.ToTable("AiFeedMatches");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.AiFeedSource", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("AiFeedId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("FolderId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("SubscriptionId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AiFeedId");
+
+                    b.HasIndex("FolderId");
+
+                    b.HasIndex("SubscriptionId");
+
+                    b.ToTable("AiFeedSources");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.AiUsage", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("Day")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Calls")
+                        .HasColumnType("integer");
+
+                    b.HasKey("UserId", "Day");
+
+                    b.ToTable("AiUsage");
+                });
+
             modelBuilder.Entity("Skimr.Domain.ApiToken", b =>
                 {
                     b.Property<long>("Id")
@@ -301,6 +404,28 @@ namespace Skimr.Infrastructure.Postgres.Migrations
                     b.HasIndex("FeedId", "PublishedAt");
 
                     b.ToTable("Articles");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.ArticleSummary", b =>
+                {
+                    b.Property<long>("ArticleId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.HasKey("ArticleId", "Model");
+
+                    b.ToTable("ArticleSummaries");
                 });
 
             modelBuilder.Entity("Skimr.Domain.Board", b =>
@@ -650,6 +775,9 @@ namespace Skimr.Infrastructure.Postgres.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("AiEnabled")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("MarkReadMode")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -806,6 +934,60 @@ namespace Skimr.Infrastructure.Postgres.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Skimr.Domain.AiFeed", b =>
+                {
+                    b.HasOne("Skimr.Infrastructure.Identity.SkimrUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Skimr.Domain.AiFeedMatch", b =>
+                {
+                    b.HasOne("Skimr.Domain.AiFeed", "AiFeed")
+                        .WithMany()
+                        .HasForeignKey("AiFeedId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Skimr.Domain.Article", null)
+                        .WithMany()
+                        .HasForeignKey("ArticleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AiFeed");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.AiFeedSource", b =>
+                {
+                    b.HasOne("Skimr.Domain.AiFeed", null)
+                        .WithMany("Sources")
+                        .HasForeignKey("AiFeedId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Skimr.Domain.Folder", null)
+                        .WithMany()
+                        .HasForeignKey("FolderId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Skimr.Domain.Subscription", null)
+                        .WithMany()
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("Skimr.Domain.AiUsage", b =>
+                {
+                    b.HasOne("Skimr.Infrastructure.Identity.SkimrUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Skimr.Domain.ApiToken", b =>
                 {
                     b.HasOne("Skimr.Infrastructure.Identity.SkimrUser", null)
@@ -824,6 +1006,15 @@ namespace Skimr.Infrastructure.Postgres.Migrations
                         .IsRequired();
 
                     b.Navigation("Feed");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.ArticleSummary", b =>
+                {
+                    b.HasOne("Skimr.Domain.Article", null)
+                        .WithMany()
+                        .HasForeignKey("ArticleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Skimr.Domain.Board", b =>
@@ -951,6 +1142,11 @@ namespace Skimr.Infrastructure.Postgres.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Skimr.Domain.AiFeed", b =>
+                {
+                    b.Navigation("Sources");
                 });
 
             modelBuilder.Entity("Skimr.Domain.Board", b =>

@@ -11,6 +11,7 @@ public enum ViewKind
     Source,
     Board,
     Search,
+    AiFeed,
 }
 
 /// <summary>Which articles a list shows. <see cref="Id"/> is a folder id or a subscription id.</summary>
@@ -31,7 +32,9 @@ public readonly record struct ReaderView(ViewKind Kind, long Id = 0)
 
     public static readonly ReaderView Search = new(ViewKind.Search);
 
-    /// <summary>Parses a <see cref="Key"/> ("all", "today", "saved", "folder:12", "source:34", "board:5").</summary>
+    public static ReaderView AiFeed(long aiFeedId) => new(ViewKind.AiFeed, aiFeedId);
+
+    /// <summary>Parses a <see cref="Key"/> ("all", "today", "saved", "folder:12", "source:34", "board:5", "ai:7").</summary>
     public static bool TryParse(string? key, out ReaderView view)
     {
         view = All;
@@ -63,6 +66,9 @@ public readonly record struct ReaderView(ViewKind Kind, long Id = 0)
                     case "board":
                         view = Board(id);
                         return true;
+                    case "ai":
+                        view = AiFeed(id);
+                        return true;
                 }
 
                 break;
@@ -77,6 +83,7 @@ public readonly record struct ReaderView(ViewKind Kind, long Id = 0)
         ViewKind.Folder => "folder:" + Id.ToString(CultureInfo.InvariantCulture),
         ViewKind.Source => "source:" + Id.ToString(CultureInfo.InvariantCulture),
         ViewKind.Board => "board:" + Id.ToString(CultureInfo.InvariantCulture),
+        ViewKind.AiFeed => "ai:" + Id.ToString(CultureInfo.InvariantCulture),
         _ => Kind.ToString().ToLowerInvariant(),
     };
 }

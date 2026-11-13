@@ -1,0 +1,172 @@
+@page "/ai-feeds"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Security.Claims
+@using Skimr.Infrastructure.Ai
+@using Skimr.Infrastructure.Reading
+@inject AiService Ai
+@inject LibraryService Library
+
+<PageTitle>AI feeds · Skimr</PageTitle>
+<SessionWatch />
+
+<h1>AI feeds</h1>
+
+@if (!Ai.Available)
+{
+    <p>AI isn't set up on this server. An admin can configure a provider; see the README.</p>
+}
+else
+{
+    <p class="hint">
+        An AI feed collects new articles from the sources you pick that match a rule written in plain English,
+        for example “Rust release announcements, not job posts”. Articles are checked every few minutes, from when the feed is created.
+        Each check sends article titles and opening text to the AI provider and counts toward your daily limit.
+    </p>
+
+    @if (!_aiEnabled)
+    {
+        <p class="alert error" role="alert">AI features are off for your account, so nothing is checked. Turn them on in <a href="settings">Settings</a>.</p>
+    }
+
+    @if (_message is not null)
+    {
+        <p class="alert @(_messageIsError ? "error" : "ok")" role="@(_messageIsError ? "alert" : "status")">@_message</p>
+    }
+
+    <section aria-labelledby="new-ai-feed-heading">
+        <h2 id="new-ai-feed-heading">New AI feed</h2>
+        <form class="form" @onsubmit="CreateAsync">
+            <label for="ai-name">Name</label>
+            <input id="ai-name" @bind="_name" maxlength="@AiService.MaxNameLength" />
+            <label for="ai-rule">Keep articles that are about…</label>
+            <textarea id="ai-rule" @bind="_rule" maxlength="@AiService.MaxRuleLength" rows="3"></textarea>
+            <fieldset class="choices">
+                <legend>Watch these folders and sources</legend>
+                @foreach (var folder in _folders)
+                {
+                    <label class="check"><input type="checkbox" checked="@_folderIds.Contains(folder.Id)" @onchange="e => Toggle(_folderIds, folder.Id, e)" /> 📁 @folder.Name</label>
+                }
+                @foreach (var source in _sources)
+                {
+                    <label class="check"><input type="checkbox" checked="@_sourceIds.Contains(source.SubscriptionId)" @onchange="e => Toggle(_sourceIds, source.SubscriptionId, e)" /> @source.Title</label>
+                }
+            </fieldset>
+            <button type="submit" disabled="@_busy">Create AI feed</button>
+        </form>
+    </section>
+
+    @if (_feeds.Count > 0)
+    {
+        <section aria-labelledby="ai-feeds-heading">
+            <h2 id="ai-feeds-heading">Your AI feeds</h2>
+            <table>
+                <thead><tr><th>Name</th><th>Rule</th><th>Last checked</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var feed in _feeds)
+                    {
+                        <tr>
+                            <td><a href="ai/@feed.Id">@feed.Name</a></td>
+                            <td>@feed.Rule</td>
+                            <td>
+                                @(feed.LastCheckedAt?.ToString("yyyy-MM-dd HH:mm") ?? "not yet")
+                                @if (feed.LastError is not null)
+                                {
+                                    <br /><span class="error-text">@feed.LastError</span>
+                                }
+                            </td>
+                            <td><button type="button" class="danger" disabled="@_busy" @onclick="() => DeleteAsync(feed.Id)">Delete</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </section>
+    }
+}
+
+@code {
+    private Guid _userId;
+    private bool _aiEnabled;
+    private bool _busy;
+    private string _name = "";
+    private string _rule = "";
+    private string? _message;
+    private bool _messageIsError;
+    private readonly HashSet<long> _folderIds = [];
+    private readonly HashSet<long> _sourceIds = [];
+    private IReadOnlyList<FolderDetails> _folders = [];
+    private IReadOnlyList<SourceDetails> _sources = [];
+    private IReadOnlyList<AiFeedDetails> _feeds = [];
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthState { get; set; } = null!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = Guid.Parse((await AuthState).User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        _aiEnabled = await Ai.IsEnabledForAsync(_userId, CancellationToken.None);
+        _folders = await Library.ListFoldersAsync(_userId, CancellationToken.None);
+        _sources = await Library.ListSourcesAsync(_userId, CancellationToken.None);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync() => _feeds = await Ai.ListFeedsAsync(_userId, CancellationToken.None);
+
+    private static void Toggle(HashSet<long> set, long id, ChangeEventArgs e)
+    {
+        if (e.Value is true)
+        {
+            set.Add(id);
+        }
+        else
+        {
+            set.Remove(id);
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await Ai.CreateFeedAsync(_userId, _name, _rule, _folderIds, _sourceIds, CancellationToken.None);
+            _messageIsError = !result.Succeeded;
+            _message = result.Succeeded ? $"Created “{_name.Trim()}”. It starts with articles that arrive from now on." : result.Error;
+            if (result.Succeeded)
+            {
+                _name = "";
+                _rule = "";
+                _folderIds.Clear();
+                _sourceIds.Clear();
+                await LoadAsync();
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteAsync(long id)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await Ai.DeleteFeedAsync(_userId, id, CancellationToken.None);
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

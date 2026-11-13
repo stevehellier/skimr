@@ -4,6 +4,7 @@
 @page "/folder/{FolderId:long}"
 @page "/source/{SourceId:long}"
 @page "/board/{BoardId:long}"
+@page "/ai/{AiFeedId:long}"
 @page "/search"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IAsyncDisposable
@@ -17,6 +18,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 @inject TimeProvider Time
+@inject Skimr.Infrastructure.Ai.AiService Ai
 
 <PageTitle>@Title · Skimr</PageTitle>
 <SessionWatch />
@@ -24,7 +26,7 @@
 <div class="reader @(_navOpen ? "nav-open" : null) @(_article is not null ? "pane-open" : null)">
     <aside class="reader-nav" id="reader-nav">
         <button type="button" class="secondary nav-close" @onclick="() => _navOpen = false">Close</button>
-        <NavPanel Nav="_nav" Current="_view" OnAddSource="OpenAddSourceAsync" />
+        <NavPanel Nav="_nav" Current="_view" OnAddSource="OpenAddSourceAsync" ShowAiFeeds="Ai.Available" />
     </aside>
 
     <section class="reader-main" aria-labelledby="view-title">
@@ -112,6 +114,7 @@
         <ArticlePane Article="_article" OnClose="CloseAsync" OnToggleSaved="() => ToggleSavedAsync(_article.ArticleId)" OnToggleRead="() => ToggleReadAsync(_article.ArticleId)"
                      OnLoadFullText="LoadFullTextAsync" FullTextLoading="_fullTextLoading" FullTextError="@_fullTextError">
             <BoardPicker UserId="_userId" ArticleId="_article.ArticleId" OnChanged="ReloadNavAndRenderAsync" />
+            <SummaryBox UserId="_userId" ArticleId="_article.ArticleId" />
         </ArticlePane>
     }
 </div>
@@ -186,6 +189,9 @@
     [Parameter]
     public long? BoardId { get; set; }
 
+    [Parameter]
+    public long? AiFeedId { get; set; }
+
     [SupplyParameterFromQuery(Name = "q")]
     public string? SearchText { get; set; }
 
@@ -213,6 +219,7 @@
         ViewKind.Saved => "Read Later",
         ViewKind.Folder => _nav.Folders.FirstOrDefault(f => f.Id == _view.Id)?.Name ?? "Folder",
         ViewKind.Board => _nav.BoardList.FirstOrDefault(b => b.Id == _view.Id)?.Name ?? "Board",
+        ViewKind.AiFeed => _nav.AiFeedList.FirstOrDefault(f => f.Id == _view.Id)?.Name ?? "AI feed",
         ViewKind.Search => $"Search: {SearchText}",
         _ => _nav.Folders.SelectMany(f => f.Sources).Concat(_nav.Unfiled).FirstOrDefault(s => s.SubscriptionId == _view.Id)?.Title ?? "Source",
     };
@@ -221,6 +228,7 @@
     {
         ViewKind.Saved => "Nothing saved. Press s on an article to read it later.",
         ViewKind.Board => "This board is empty. Open an article and tick this board to add it.",
+        ViewKind.AiFeed => _preference.UnreadOnly ? "No unread matches. New articles from this feed's sources are checked every few minutes." : "No matches yet. New articles from this feed's sources are checked every few minutes.",
         ViewKind.Search => string.IsNullOrWhiteSpace(SearchText) ? "Type in the search box and press Enter." : "No articles match.",
         _ when _nav.Folders.Count == 0 && _nav.Unfiled.Count == 0 => "No sources yet. Use “+ Add source” to subscribe to a site or feed.",
         _ => _preference.UnreadOnly ? "All caught up." : "Nothing here yet. New articles appear after the next fetch.",
@@ -277,6 +285,7 @@
         _view = FolderId is { } folder ? ReaderView.Folder(folder)
             : SourceId is { } source ? ReaderView.Source(source)
             : BoardId is { } board ? ReaderView.Board(board)
+            : AiFeedId is { } aiFeed ? ReaderView.AiFeed(aiFeed)
             : path == "today" ? ReaderView.Today
             : path == "saved" ? ReaderView.Saved
             : path == "search" ? ReaderView.Search

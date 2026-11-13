@@ -52,13 +52,32 @@
         </ul>
     }
 
+    @if (Nav.AiFeedList.Count > 0)
+    {
+        <h2 class="nav-heading">AI feeds</h2>
+        <ul class="nav-list sources" role="list">
+            @foreach (var feed in Nav.AiFeedList)
+            {
+                <li>@Link($"ai/{feed.Id}", feed.HasError ? feed.Name + " ⚠" : feed.Name, feed.Unread, ReaderView.AiFeed(feed.Id), "unread")</li>
+            }
+        </ul>
+    }
+
     <div class="nav-actions">
         <button type="button" class="secondary" @onclick="OnAddSource">+ Add source</button>
         <a href="organize">Organise</a>
+        @if (ShowAiFeeds)
+        {
+            <a href="ai-feeds">AI feeds</a>
+        }
     </div>
 </nav>
 
 @code {
+    /// <summary>True when the server has AI set up (the management page explains the opt-in).</summary>
+    [Parameter]
+    public bool ShowAiFeeds { get; set; }
+
     private readonly HashSet<long> _collapsed = [];
 
     [Parameter, EditorRequired]

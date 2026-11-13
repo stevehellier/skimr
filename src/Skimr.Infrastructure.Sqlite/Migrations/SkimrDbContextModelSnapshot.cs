@@ -143,6 +143,105 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Skimr.Domain.AiFeed", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("LastCheckedArticleId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastCheckedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Rule")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("AiFeeds");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.AiFeedMatch", b =>
+                {
+                    b.Property<long>("AiFeedId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("ArticleId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("MatchedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("AiFeedId", "ArticleId");
+
+                    b.HasIndex("ArticleId");
+
+                    b.ToTable("AiFeedMatches");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.AiFeedSource", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("AiFeedId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("FolderId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("SubscriptionId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AiFeedId");
+
+                    b.HasIndex("FolderId");
+
+                    b.HasIndex("SubscriptionId");
+
+                    b.ToTable("AiFeedSources");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.AiUsage", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("Day")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Calls")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("UserId", "Day");
+
+                    b.ToTable("AiUsage");
+                });
+
             modelBuilder.Entity("Skimr.Domain.ApiToken", b =>
                 {
                     b.Property<long>("Id")
@@ -288,6 +387,28 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                     b.HasIndex("FeedId", "PublishedAt");
 
                     b.ToTable("Articles");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.ArticleSummary", b =>
+                {
+                    b.Property<long>("ArticleId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ArticleId", "Model");
+
+                    b.ToTable("ArticleSummaries");
                 });
 
             modelBuilder.Entity("Skimr.Domain.Board", b =>
@@ -625,6 +746,9 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("AiEnabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("MarkReadMode")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -781,6 +905,60 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Skimr.Domain.AiFeed", b =>
+                {
+                    b.HasOne("Skimr.Infrastructure.Identity.SkimrUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Skimr.Domain.AiFeedMatch", b =>
+                {
+                    b.HasOne("Skimr.Domain.AiFeed", "AiFeed")
+                        .WithMany()
+                        .HasForeignKey("AiFeedId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Skimr.Domain.Article", null)
+                        .WithMany()
+                        .HasForeignKey("ArticleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AiFeed");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.AiFeedSource", b =>
+                {
+                    b.HasOne("Skimr.Domain.AiFeed", null)
+                        .WithMany("Sources")
+                        .HasForeignKey("AiFeedId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Skimr.Domain.Folder", null)
+                        .WithMany()
+                        .HasForeignKey("FolderId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Skimr.Domain.Subscription", null)
+                        .WithMany()
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("Skimr.Domain.AiUsage", b =>
+                {
+                    b.HasOne("Skimr.Infrastructure.Identity.SkimrUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Skimr.Domain.ApiToken", b =>
                 {
                     b.HasOne("Skimr.Infrastructure.Identity.SkimrUser", null)
@@ -799,6 +977,15 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                         .IsRequired();
 
                     b.Navigation("Feed");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.ArticleSummary", b =>
+                {
+                    b.HasOne("Skimr.Domain.Article", null)
+                        .WithMany()
+                        .HasForeignKey("ArticleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Skimr.Domain.Board", b =>
@@ -926,6 +1113,11 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Skimr.Domain.AiFeed", b =>
+                {
+                    b.Navigation("Sources");
                 });
 
             modelBuilder.Entity("Skimr.Domain.Board", b =>

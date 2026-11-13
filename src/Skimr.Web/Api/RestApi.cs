@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Skimr.Domain;
+using Skimr.Infrastructure.Ai;
 using Skimr.Infrastructure.Identity;
 using Skimr.Infrastructure.Persistence;
 using Skimr.Infrastructure.Reading;
@@ -29,7 +30,11 @@ public sealed record ArticleBatchPatch(long[] Ids, bool? Read, bool? Saved);
 
 public sealed record MarkReadRequest(string View, int? OlderThanDays);
 
-public sealed record SettingsPatch(MarkReadMode? MarkReadMode);
+public sealed record SettingsPatch(MarkReadMode? MarkReadMode, bool? AiEnabled = null);
+
+public sealed record AiFeedRequest(string Name, string Rule, long[]? FolderIds, long[]? SubscriptionIds);
+
+public sealed record AiFeedPatch(string? Name, string? Rule, long[]? FolderIds, long[]? SubscriptionIds);
 
 public sealed record ViewPreferenceRequest(ArticleLayout Layout, ArticleSort Sort, bool UnreadOnly);
 
@@ -69,6 +74,7 @@ internal static class RestApi
         MapArticles(api);
         MapBoards(api);
         MapSettings(api);
+        MapAi(api);
         MapAdmin(api.MapGroup("/admin").RequireAuthorization(Policies.Admin).WithTags("Admin"));
         return app;
     }
@@ -227,7 +233,7 @@ internal static class RestApi
         {
             if (!ReaderView.TryParse(view ?? "all", out var parsed))
             {
-                return BadRequest("view must be all, today, saved, folder:{id}, source:{id} or board:{id}.");
+                return BadRequest("view must be all, today, saved, folder:{id}, source:{id}, board:{id} or ai:{id}.");
             }
 
             if (!ApiCursor.TryDecode(cursor, out var after))
@@ -365,15 +371,25 @@ internal static class RestApi
 
     private static void MapSettings(RouteGroupBuilder api)
     {
-        api.MapGet("/settings", async (ClaimsPrincipal user, ReadingService reading, CancellationToken ct) =>
-            Results.Ok(new { markReadMode = await reading.GetMarkReadModeAsync(Uid(user), ct) }))
+        api.MapGet("/settings", async (ClaimsPrincipal user, ReadingService reading, AiService ai, CancellationToken ct) =>
+            Results.Ok(new
+            {
+                markReadMode = await reading.GetMarkReadModeAsync(Uid(user), ct),
+                aiAvailable = ai.Available,
+                aiEnabled = await ai.IsEnabledForAsync(Uid(user), ct),
+            }))
             .WithName("GetSettings");
 
-        api.MapPatch("/settings", async (SettingsPatch patch, ClaimsPrincipal user, ReadingService reading, CancellationToken ct) =>
+        api.MapPatch("/settings", async (SettingsPatch patch, ClaimsPrincipal user, ReadingService reading, AiService ai, CancellationToken ct) =>
         {
             if (patch.MarkReadMode is { } mode)
             {
                 await reading.SetMarkReadModeAsync(Uid(user), mode, ct);
+            }
+
+            if (patch.AiEnabled is { } enabled)
+            {
+                await ai.SetEnabledAsync(Uid(user), enabled, ct);
             }
 
             return Results.NoContent();
@@ -395,6 +411,43 @@ internal static class RestApi
             await reading.SaveViewPreferenceAsync(Uid(user), view, request.Layout, request.Sort, request.UnreadOnly, ct);
             return Results.NoContent();
         }).WithName("SaveViewPreference");
+    }
+
+    // ---- AI (optional, PLAN D12) ---------------------------------------------------------
+
+    private static void MapAi(RouteGroupBuilder api)
+    {
+        api.MapPost("/articles/{id:long}/summary", async (long id, ClaimsPrincipal user, AiService ai, CancellationToken ct) =>
+        {
+            var result = await ai.SummariseAsync(Uid(user), id, ct);
+            return result.Failure switch
+            {
+                null => Results.Ok(new { summary = result.Text }),
+                AiFailure.NotFound => Results.NotFound(),
+                AiFailure.Off => Results.Problem(result.Message, statusCode: StatusCodes.Status409Conflict),
+                AiFailure.NotEnabled => Results.Problem(result.Message, statusCode: StatusCodes.Status403Forbidden),
+                AiFailure.LimitReached => Results.Problem(result.Message, statusCode: StatusCodes.Status429TooManyRequests),
+                _ => Results.Problem(result.Message, statusCode: StatusCodes.Status502BadGateway),
+            };
+        }).WithName("SummariseArticle");
+
+        api.MapGet("/ai-feeds", async (ClaimsPrincipal user, AiService ai, CancellationToken ct) =>
+            Results.Ok(await ai.ListFeedsAsync(Uid(user), ct)))
+            .WithName("ListAiFeeds").Produces<IReadOnlyList<AiFeedDetails>>();
+
+        api.MapPost("/ai-feeds", async (AiFeedRequest request, ClaimsPrincipal user, AiService ai, CancellationToken ct) =>
+        {
+            var result = await ai.CreateFeedAsync(Uid(user), request.Name ?? "", request.Rule ?? "", request.FolderIds ?? [], request.SubscriptionIds ?? [], ct);
+            return Outcome(result, () => Results.Created($"/api/v1/ai-feeds/{result.Id}", new { id = result.Id }));
+        }).WithName("CreateAiFeed");
+
+        api.MapPatch("/ai-feeds/{id:long}", async (long id, AiFeedPatch patch, ClaimsPrincipal user, AiService ai, CancellationToken ct) =>
+            Outcome(await ai.UpdateFeedAsync(Uid(user), id, patch.Name, patch.Rule, patch.FolderIds, patch.SubscriptionIds, ct)))
+            .WithName("UpdateAiFeed");
+
+        api.MapDelete("/ai-feeds/{id:long}", async (long id, ClaimsPrincipal user, AiService ai, CancellationToken ct) =>
+            Outcome(await ai.DeleteFeedAsync(Uid(user), id, ct)))
+            .WithName("DeleteAiFeed");
     }
 
     // ---- Admin -------------------------------------------------------------------------------

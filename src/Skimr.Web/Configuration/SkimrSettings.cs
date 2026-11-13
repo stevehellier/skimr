@@ -1,4 +1,5 @@
 using System.Net;
+using Skimr.Infrastructure.Ai;
 using Skimr.Infrastructure.Content;
 using Skimr.Infrastructure.Fetching;
 using Skimr.Infrastructure.Identity;
@@ -39,6 +40,8 @@ internal sealed class SkimrSettings
     public required ContentOptions Content { get; init; }
 
     public required RetentionOptions Retention { get; init; }
+
+    public required AiOptions Ai { get; init; }
 
     /// <summary>Used until an admin picks a mode in the setup wizard or admin page.</summary>
     public required RegistrationMode DefaultRegistrationMode { get; init; }
@@ -125,6 +128,8 @@ internal sealed class SkimrSettings
             Days = read.Int("Retention:Days", 60, 7, 3650),
         };
 
+        var ai = LoadAi(config, read, errors);
+
         var registrationText = config["Registration:DefaultMode"] ?? nameof(RegistrationMode.InviteOnly);
         if (!Enum.TryParse<RegistrationMode>(registrationText, ignoreCase: true, out var registration) || !Enum.IsDefined(registration))
         {
@@ -156,9 +161,64 @@ internal sealed class SkimrSettings
             Fetch = fetch,
             Content = content,
             Retention = retention,
+            Ai = ai,
             DefaultRegistrationMode = registration,
             LoginAttemptsPerMinute = loginPerMinute,
             ApiRequestsPerMinute = apiPerMinute,
+        };
+    }
+
+    /// <summary>AI is off unless Ai:Provider is set; then the model (and for Anthropic the key) are required.</summary>
+    private static AiOptions LoadAi(IConfiguration config, Reader read, List<string> errors)
+    {
+        var providerText = config["Ai:Provider"] ?? nameof(AiProvider.None);
+        if (!Enum.TryParse<AiProvider>(providerText, ignoreCase: true, out var provider) || !Enum.IsDefined(provider))
+        {
+            errors.Add($"Ai:Provider must be 'None', 'Anthropic' or 'OpenAICompatible' (got '{providerText}').");
+            return new AiOptions();
+        }
+
+        var dailyCalls = read.Int("Ai:DailyCallsPerUser", 500, 1, 1_000_000);
+        var timeout = read.Int("Ai:TimeoutSeconds", 120, 10, 600);
+        if (provider == AiProvider.None)
+        {
+            return new AiOptions();
+        }
+
+        var model = (config["Ai:Model"] ?? "").Trim();
+        if (model.Length == 0)
+        {
+            errors.Add("Ai:Model is required when Ai:Provider is set (for example 'claude-opus-5-5', or a model name your OpenAI-compatible server knows).");
+        }
+
+        var apiKey = config["Ai:ApiKey"] is { Length: > 0 } key ? key.Trim() : null;
+        if (provider == AiProvider.Anthropic && apiKey is null)
+        {
+            errors.Add("Ai:ApiKey is required when Ai:Provider is 'Anthropic'. Set it with the SKIMR__Ai__ApiKey environment variable, not in a file.");
+        }
+
+        Uri? baseUrl = provider == AiProvider.Anthropic ? AiOptions.AnthropicDefaultBaseUrl : null;
+        if (config["Ai:BaseUrl"] is { Length: > 0 } urlText)
+        {
+            if (!Uri.TryCreate(urlText.Trim().TrimEnd('/') + "/", UriKind.Absolute, out baseUrl) || baseUrl.Scheme is not ("http" or "https")
+                || baseUrl.Query.Length > 0 || baseUrl.UserInfo.Length > 0)
+            {
+                errors.Add($"Ai:BaseUrl must be an absolute http(s) URL with no query string or credentials (got '{urlText}').");
+            }
+        }
+        else if (provider == AiProvider.OpenAICompatible)
+        {
+            errors.Add("Ai:BaseUrl is required when Ai:Provider is 'OpenAICompatible' (for example http://localhost:11434/v1 for Ollama).");
+        }
+
+        return new AiOptions
+        {
+            Provider = provider,
+            BaseUrl = baseUrl,
+            Model = model,
+            ApiKey = apiKey,
+            DailyCallsPerUser = dailyCalls,
+            Timeout = TimeSpan.FromSeconds(timeout),
         };
     }
 

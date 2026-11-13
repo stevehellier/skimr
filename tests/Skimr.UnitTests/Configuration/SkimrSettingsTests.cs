@@ -47,6 +47,48 @@ public sealed class SkimrSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Ai_is_off_by_default()
+    {
+        var settings = Load();
+
+        settings.Ai.Enabled.Should().BeFalse();
+        settings.Ai.DailyCallsPerUser.Should().Be(500);
+    }
+
+    [Fact]
+    public void Anthropic_defaults_its_base_url_and_needs_a_model_and_key()
+    {
+        Load(("Ai:Provider", "anthropic"), ("Ai:Model", "claude-opus-5-5"), ("Ai:ApiKey", "k")).Ai.BaseUrl
+            .Should().Be(new Uri("https://api.anthropic.com/"));
+
+        var act = () => Load(("Ai:Provider", "Anthropic"));
+
+        act.Should().Throw<InvalidConfigurationException>()
+            .Which.Errors.Should().Satisfy(e => e.Contains("Ai:Model"), e => e.Contains("Ai:ApiKey"));
+    }
+
+    [Theory]
+    [InlineData("OpenAICompatible", "", "Ai:BaseUrl is required")]
+    [InlineData("OpenAICompatible", "ftp://host/v1", "Ai:BaseUrl must be")]
+    [InlineData("OpenAICompatible", "http://user:pass@host/v1", "Ai:BaseUrl must be")]
+    [InlineData("Gemini", "", "Ai:Provider must be")]
+    public void Bad_ai_settings_fail_with_the_key_name(string provider, string baseUrl, string error)
+    {
+        var act = () => Load(("Ai:Provider", provider), ("Ai:Model", "m"), ("Ai:BaseUrl", baseUrl));
+
+        act.Should().Throw<InvalidConfigurationException>().Which.Errors.Should().ContainSingle(e => e.Contains(error));
+    }
+
+    [Fact]
+    public void Open_ai_compatible_needs_no_key_and_keeps_its_path()
+    {
+        var ai = Load(("Ai:Provider", "OpenAICompatible"), ("Ai:Model", "llama3"), ("Ai:BaseUrl", "http://localhost:11434/v1")).Ai;
+
+        ai.BaseUrl.Should().Be(new Uri("http://localhost:11434/v1/"));
+        ai.ApiKey.Should().BeNull();
+    }
+
+    [Fact]
     public void Reports_every_bad_value_at_once()
     {
         var act = () => Load(

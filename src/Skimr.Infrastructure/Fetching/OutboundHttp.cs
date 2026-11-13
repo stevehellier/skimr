@@ -35,9 +35,11 @@ internal interface IOutboundHttp
     Task<FetchResponse> PostFormAsync(Uri uri, IReadOnlyDictionary<string, string> form, CancellationToken cancellationToken);
 }
 
-internal sealed partial class OutboundHttp(IHttpClientFactory clientFactory, FetchOptions options, TimeProvider time) : IOutboundHttp
+/// <param name="clientName">Named HttpClient to use; AI calls use their own (PLAN D63).</param>
+internal sealed partial class OutboundHttp(IHttpClientFactory clientFactory, FetchOptions options, TimeProvider time, string clientName = OutboundHttp.ClientName) : IOutboundHttp
 {
     public const string ClientName = "outbound";
+    public const string AiClientName = "ai";
 
     public Task<FetchResponse> GetAsync(FetchRequest request, CancellationToken cancellationToken)
     {
@@ -59,6 +61,21 @@ internal sealed partial class OutboundHttp(IHttpClientFactory clientFactory, Fet
     public Task<FetchResponse> PostFormAsync(Uri uri, IReadOnlyDictionary<string, string> form, CancellationToken cancellationToken) =>
         SendAsync(new HttpRequestMessage(HttpMethod.Post, uri) { Content = new FormUrlEncodedContent(form) }, cancellationToken);
 
+    /// <summary>A JSON POST (AI providers). Non-2xx statuses are returned, not thrown.</summary>
+    public Task<FetchResponse> PostJsonAsync(Uri uri, string json, IReadOnlyDictionary<string, string> headers, CancellationToken cancellationToken)
+    {
+        var message = new HttpRequestMessage(HttpMethod.Post, uri)
+        {
+            Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
+        };
+        foreach (var (name, value) in headers)
+        {
+            message.Headers.TryAddWithoutValidation(name, value);
+        }
+
+        return SendAsync(message, cancellationToken);
+    }
+
     private async Task<FetchResponse> SendAsync(HttpRequestMessage message, CancellationToken cancellationToken, TimeSpan? timeoutOverride = null)
     {
         using var _ = message;
@@ -73,7 +90,7 @@ internal sealed partial class OutboundHttp(IHttpClientFactory clientFactory, Fet
 
         try
         {
-            using var client = clientFactory.CreateClient(ClientName);
+            using var client = clientFactory.CreateClient(clientName);
             using var response = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
 
             if ((int)response.StatusCode is >= 300 and < 400 && response.StatusCode != HttpStatusCode.NotModified)
