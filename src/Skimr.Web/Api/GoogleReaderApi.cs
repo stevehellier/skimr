@@ -365,9 +365,18 @@ internal static partial class GoogleReaderApi
             url = url[FeedPrefix.Length..];
         }
 
-        var result = await library.SubscribeAsync(UserId(user), url, [], context.RequestAborted);
+        // Quick add takes whatever the user typed, often a site address: find its feed first, as
+        // the UI does. Discovery fetches through the SSRF-guarded client.
+        var (found, error) = await library.DiscoverAsync(url, context.RequestAborted);
+        if (found.Count == 0)
+        {
+            return Results.Json(new { numResults = 0, query = url, error = error ?? "No feed found." });
+        }
+
+        var feed = found[0];
+        var result = await library.SubscribeAsync(UserId(user), feed.Url, [], context.RequestAborted, feed.Title);
         return result.Succeeded
-            ? Results.Json(new { numResults = 1, query = url, streamId = FeedPrefix + result.Id!.Value.ToString(CultureInfo.InvariantCulture), streamName = url })
+            ? Results.Json(new { numResults = 1, query = url, streamId = FeedPrefix + result.Id!.Value.ToString(CultureInfo.InvariantCulture), streamName = feed.Title ?? feed.Url })
             : Results.Json(new { numResults = 0, query = url, error = result.Error });
     }
 

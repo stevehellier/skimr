@@ -3,12 +3,15 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Skimr.Domain;
 using Skimr.Infrastructure.Identity;
 using Skimr.Infrastructure.Persistence;
 using Skimr.Infrastructure.Reading;
 using Skimr.IntegrationTests.Infrastructure;
+using Skimr.UnitTests.Fetching;
 
 namespace Skimr.IntegrationTests;
 
@@ -309,9 +312,8 @@ public abstract class GoogleReaderTests(AppFixture fixture)
         using var client = Client(token);
 
         (await PostAsync(client, "/subscription/edit", ("ac", "subscribe"), ("s", $"feed/{url}"), ("t", "Named"), ("a", "user/-/label/News"))).StatusCode.Should().Be(HttpStatusCode.OK);
-        var quick = await JsonAsync(await PostAsync(client, "/subscription/quickadd", ("quickadd", url2)));
-        quick.GetProperty("numResults").GetInt32().Should().Be(1);
-        var quickStream = quick.GetProperty("streamId").GetString()!;
+        (await PostAsync(client, "/subscription/edit", ("ac", "subscribe"), ("s", $"feed/{url2}"))).StatusCode.Should().Be(HttpStatusCode.OK);
+        var second = (await Library.ListSourcesAsync(userId, Ct)).Single(s => s.FeedUrl == url2).SubscriptionId;
 
         var sources = await Library.ListSourcesAsync(userId, Ct);
         var named = sources.Single(s => s.FeedUrl == url);
@@ -330,9 +332,64 @@ public abstract class GoogleReaderTests(AppFixture fixture)
         (await PostAsync(client, "/disable-tag", ("s", "user/-/label/Someday"))).StatusCode.Should().Be(HttpStatusCode.OK);
         (await Library.ListFoldersAsync(userId, Ct)).Select(f => f.Name).Should().NotContain("Someday");
 
-        (await PostAsync(client, "/subscription/edit", ("ac", "unsubscribe"), ("s", quickStream))).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await PostAsync(client, "/subscription/edit", ("ac", "unsubscribe"), ("s", $"feed/{second}"))).StatusCode.Should().Be(HttpStatusCode.OK);
         (await Library.ListSourcesAsync(userId, Ct)).Select(s => s.FeedUrl).Should().Equal(url);
     }
+
+    [Fact]
+    public async Task Quick_add_finds_the_feed_behind_a_site_address()
+    {
+        await using var server = await LocalHttpServer.StartAsync(app =>
+        {
+            app.MapGet("/", (HttpContext c) => Results.Content(
+                $"<html><head><link rel=\"alternate\" type=\"application/rss+xml\" title=\"Site feed\" href=\"/feed.xml\"></head><body>Hi</body></html>", "text/html"));
+            app.MapGet("/feed.xml", () => Results.Text("<rss version=\"2.0\"><channel><title>Site feed</title></channel></rss>", "application/rss+xml"));
+        });
+        // A separate host: discovery also probes common paths like /feed.xml on the same site.
+        await using var plain = await LocalHttpServer.StartAsync(app =>
+            app.MapGet("/", () => Results.Content("<html><body>No feed here</body></html>", "text/html")));
+        await using var app = fixture.CreateFreshApp(("Fetch:AllowPrivateNetworkFeeds", "true"));
+        Guid userId;
+        string token;
+        await using (var scope = app.Services.CreateAsyncScope())
+        {
+            userId = (await scope.ServiceProvider.GetRequiredService<AccountService>().CreateUserAsync("quick", "a long password here", false, Ct)).UserId!.Value;
+            token = (await scope.ServiceProvider.GetRequiredService<ApiTokenService>().CreateAsync(userId, "t", null, Ct)).PlainText;
+        }
+
+        using var client = app.CreateClient();
+        client.DefaultRequestHeaders.Authorization = AuthenticationHeaderValue.Parse("GoogleLogin auth=" + token);
+
+        var quick = await JsonAsync(await PostAsync(client, "/subscription/quickadd", ("quickadd", server.Url("").AbsoluteUri)));
+        quick.GetProperty("numResults").GetInt32().Should().Be(1);
+        quick.GetProperty("streamName").GetString().Should().Be("Site feed");
+        var sources = await app.Services.GetRequiredService<LibraryService>().ListSourcesAsync(userId, Ct);
+        sources.Single().FeedUrl.Should().Be(server.Url("feed.xml").AbsoluteUri);
+        quick.GetProperty("streamId").GetString().Should().Be($"feed/{sources.Single().SubscriptionId}");
+
+        var none = await JsonAsync(await PostAsync(client, "/subscription/quickadd", ("quickadd", plain.Url("").AbsoluteUri)));
+        none.GetProperty("numResults").GetInt32().Should().Be(0);
+        (await app.Services.GetRequiredService<LibraryService>().ListSourcesAsync(userId, Ct)).Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Edit_tag_handles_the_full_ten_thousand_ids()
+    {
+        // The cap is 10,000 ids per request; make sure both databases accept that many in one query.
+        var (url, ids) = await NewFeedAsync(GoogleReaderApiMaxIds);
+        var (userId, _, token) = await NewUserAsync();
+        await Library.SubscribeAsync(userId, url, [], Ct);
+        using var client = Client(token);
+
+        var form = ids.Select(i => ("i", i.ToString(CultureInfo.InvariantCulture))).Append(("a", ReadTag)).ToArray();
+        (await PostAsync(client, "/edit-tag", form)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await Reading.GetNavAsync(userId, Ct)).AllUnread.Should().Be(0);
+        var tooMany = ids.Select(i => ("i", i.ToString(CultureInfo.InvariantCulture))).Append(("i", "1")).Append(("a", ReadTag)).ToArray();
+        (await PostAsync(client, "/edit-tag", tooMany)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    private const int GoogleReaderApiMaxIds = 10_000;
 
     // ---- Ownership ----------------------------------------------------------------------
 
