@@ -2,24 +2,23 @@
 
 ## dotnet test (local, Windows, SDK 10.0.401, Docker Desktop for Postgres 17 via Testcontainers)
 
-```
+```nRunning tests from C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64)
 Running tests from C:\Users\Steve\Projects\Skimr\tests\Skimr.UnitTests\bin\Debug\net10.0\Skimr.UnitTests.dll (net10.0|x64)
-Running tests from C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64)
-C:\Users\Steve\Projects\Skimr\tests\Skimr.UnitTests\bin\Debug\net10.0\Skimr.UnitTests.dll (net10.0|x64) passed (15s 057ms)
-C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64) passed (1m 46s 085ms)
+C:\Users\Steve\Projects\Skimr\tests\Skimr.UnitTests\bin\Debug\net10.0\Skimr.UnitTests.dll (net10.0|x64) passed (14s 297ms)
+C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64) passed (1m 05s 813ms)
 
 Test run summary: Passed!
-  C:\Users\Steve\Projects\Skimr\tests\Skimr.UnitTests\bin\Debug\net10.0\Skimr.UnitTests.dll (net10.0|x64) passed (15s 057ms)
-  C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64) passed (1m 46s 085ms)
+  C:\Users\Steve\Projects\Skimr\tests\Skimr.UnitTests\bin\Debug\net10.0\Skimr.UnitTests.dll (net10.0|x64) passed (14s 297ms)
+  C:\Users\Steve\Projects\Skimr\tests\Skimr.IntegrationTests\bin\Debug\net10.0\Skimr.IntegrationTests.dll (net10.0|x64) passed (1m 05s 813ms)
 
-  total: 243
+  total: 252
   failed: 0
-  succeeded: 243
+  succeeded: 252
   skipped: 0
-  duration: 1m 48s 220ms
+  duration: 1m 06s 724ms
 ```
 
-243 passed, 0 failed: 169 unit and 74 integration. Each auth test gets its own empty database (a new SQLite file, or a new Postgres database in the shared container) and runs on both providers.
+252 passed, 0 failed: 169 unit and 83 integration. Each auth test gets its own empty database (a new SQLite file, or a new Postgres database in the shared container) and runs on both providers.
 
 ## What the auth tests prove (each on SQLite and Postgres)
 
@@ -44,3 +43,13 @@ Test run summary: Passed!
 ## Docker (local, linux/amd64)
 
 A fresh container reached `healthy`; `docker logs` showed `No accounts exist yet. Open /setup in your browser and enter this setup code: CBE3-8WKZ-YQBZ`; `GET /` returned 302 to `/setup`; `/setup` rendered the form.
+
+## Pre-merge review fixes (each test was seen failing before its fix)
+
+| Defect | Test that now covers it |
+|---|---|
+| The API rate limit ran before the bearer token was authenticated, so it was per IP, not per user | `Api_rate_limit_is_per_user_not_per_address`: Alice gets 429 after 10 calls; Bob still gets 200 |
+| A temporary lockout (5 wrong passwords) also rejected that user's API tokens and open sessions, so anyone knowing a user name could keep their sync apps offline | `A_temporary_lockout_does_not_break_the_users_tokens`. Only *disabled* accounts are rejected now |
+| A forged sign-out (no antiforgery token) returned 500 | `Sign_out_needs_the_antiforgery_token_and_ends_the_session`: forged = 400 and the user stays signed in; real = signed out |
+| The Docker image had no `_framework/` folder (no `blazor.web.js`), and had been missing it since Phase 1. The cached restore ran before the `.razor` sources were copied in, and `--no-restore` publish reused it | The CI Docker smoke test now fetches every script and stylesheet on `/setup` from the published image and needs a 200 for each. Locally after the fix: all 4 assets returned 200, including `_framework/blazor.web.whefm3rrpu.js` |
+| Scoped CSS wasn't served in the test host | `Signed_out_visitors_can_load_the_login_page_assets` (the test factory enables static web assets) |

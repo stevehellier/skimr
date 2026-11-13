@@ -35,8 +35,9 @@ internal sealed class ApiTokenAuthenticationHandler(
         }
 
         var user = await users.FindByIdAsync(token.Value.UserId.ToString());
-        // A disabled (or locked-out) account's tokens stop working immediately.
-        if (user is null || await users.IsLockedOutAsync(user))
+        // A disabled account's tokens stop working immediately. A temporary lockout from wrong
+        // passwords doesn't affect them: otherwise anyone knowing a user name could block their apps.
+        if (user is null || AccountService.IsDisabled(user))
         {
             return AuthenticateResult.Fail("Account is disabled.");
         }

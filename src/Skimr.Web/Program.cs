@@ -115,8 +115,10 @@ app.UseStatusCodePagesWithReExecute("/status/{0}", createScopeForStatusCodePages
 // Order matters: the setup redirect needs the endpoint and user; antiforgery must follow auth.
 app.UseAuthentication();
 app.UseSetupRedirect();
-app.UseRateLimiter();
 app.UseAuthorization();
+// After authorization: the API's bearer token is only authenticated by its policy, and the
+// limiter partitions API requests by that user (PLAN D38).
+app.UseRateLimiter();
 app.UseAntiforgery();
 
 // Anonymous by design: Docker's HEALTHCHECK, hub callbacks (HMAC-signed) and static files.

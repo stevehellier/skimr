@@ -118,6 +118,9 @@ public sealed class SkimrFactory(IReadOnlyDictionary<string, string> settings) :
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        // Build-time assets (e.g. the scoped CSS bundle) only exist under wwwroot after publish;
+        // outside Development they must be enabled explicitly.
+        builder.UseStaticWebAssets();
         foreach (var (key, value) in settings)
         {
             builder.UseSetting(key, value);

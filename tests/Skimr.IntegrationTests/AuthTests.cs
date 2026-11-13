@@ -328,6 +328,87 @@ public abstract partial class AuthTests(AppFixture fixture)
         (await client.ApiGetAsync("/api/v1/me", body!["token"].ToString()!)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
+    [Fact]
+    public async Task A_temporary_lockout_does_not_break_the_users_tokens()
+    {
+        // Otherwise anyone who knows a user name could keep that user's sync apps offline.
+        await using var app = fixture.CreateFreshApp();
+        using var _ = await SetupAsync(app);
+        var userId = await CreateUserAsync(app, "target");
+        var token = await WithScopeAsync(app, async sp => (await sp.GetRequiredService<ApiTokenService>().CreateAsync(userId, "t", null, Ct)).PlainText);
+        using var attacker = Browser.Open(app);
+        for (var i = 0; i < 5; i++)
+        {
+            await attacker.SubmitAsync("/login", "login", new Dictionary<string, string> { ["Input.UserName"] = "target", ["Input.Password"] = "wrong password!" });
+        }
+
+        (await WithScopeAsync(app, sp => sp.GetRequiredService<AccountService>().ListUsersAsync(Ct))).Single(u => u.Id == userId).IsLockedOut.Should().BeTrue();
+        (await attacker.ApiGetAsync("/api/v1/me", token)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    // ---- Sign-out and assets -----------------------------------------------------------
+
+    [Fact]
+    public async Task Sign_out_needs_the_antiforgery_token_and_ends_the_session()
+    {
+        await using var app = fixture.CreateFreshApp();
+        using var browser = await SetupAsync(app);
+
+        using (var forged = new FormUrlEncodedContent(new Dictionary<string, string>()))
+        {
+            (await browser.Client.PostAsync(new Uri("/logout", UriKind.Relative), forged, Ct)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        }
+
+        (await browser.GetAsync("/")).StatusCode.Should().Be(HttpStatusCode.OK, "a forged sign-out does nothing");
+
+        var html = await browser.GetHtmlAsync("/");
+        var token = Regex.Match(html, @"name=""__RequestVerificationToken""[^>]*value=""([^""]+)""").Groups[1].Value;
+        using var real = new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token });
+        var response = await browser.Client.PostAsync(new Uri("/logout", UriKind.Relative), real, Ct);
+
+        response.Headers.Location!.OriginalString.Should().EndWith("/login");
+        (await browser.GetAsync("/")).Headers.Location!.OriginalString.Should().Contain("/login");
+    }
+
+    [Fact]
+    public async Task Signed_out_visitors_can_load_the_login_page_assets()
+    {
+        await using var app = fixture.CreateFreshApp();
+        using var _ = await SetupAsync(app);
+        using var visitor = Browser.Open(app);
+
+        var html = await visitor.GetHtmlAsync("/login");
+        var assets = AssetReference().Matches(html).Select(m => m.Groups[1].Value).Distinct().ToList();
+
+        assets.Should().NotBeEmpty();
+        foreach (var asset in assets)
+        {
+            (await visitor.GetAsync("/" + asset.TrimStart('/'))).StatusCode.Should().Be(HttpStatusCode.OK, asset);
+        }
+    }
+
+    [Fact]
+    public void Only_static_files_and_explicitly_anonymous_endpoints_skip_sign_in()
+    {
+        // Guards the fallback policy's exceptions. Whether the published image actually contains
+        // the static files is checked by the Docker smoke test in CI.
+        var endpoints = fixture.Factory.Services.GetRequiredService<Microsoft.AspNetCore.Routing.EndpointDataSource>().Endpoints
+            .OfType<Microsoft.AspNetCore.Routing.RouteEndpoint>()
+            .ToList();
+        bool Anonymous(string route) => endpoints
+            .Where(e => string.Equals(e.RoutePattern.RawText?.TrimStart('/'), route, StringComparison.OrdinalIgnoreCase))
+            .Should().NotBeEmpty(route).And.Subject
+            .All(e => e.Metadata.GetMetadata<Microsoft.AspNetCore.Authorization.IAllowAnonymous>() is not null);
+
+        Anonymous("_framework/blazor.web.js").Should().BeTrue();
+        Anonymous("login").Should().BeTrue();
+        Anonymous("setup").Should().BeTrue();
+        Anonymous("health/ready").Should().BeTrue();
+        Anonymous("").Should().BeFalse("the home page needs a sign-in");
+        Anonymous("account").Should().BeFalse();
+        Anonymous("admin/users").Should().BeFalse();
+    }
+
     // ---- Admin -------------------------------------------------------------------------
 
     [Fact]
@@ -410,6 +491,9 @@ public abstract partial class AuthTests(AppFixture fixture)
 
     [GeneratedRegex("""data-testid="invite-link">([^<]+)<""")]
     private static partial Regex InviteLink();
+
+    [GeneratedRegex("""(?:<link[^>]*href|<script[^>]*src)="([^"]+)""")]
+    private static partial Regex AssetReference();
 }
 
 public sealed class SqliteAuthTests(SqliteAppFixture fixture) : AuthTests(fixture), IClassFixture<SqliteAppFixture>;
@@ -436,5 +520,32 @@ public sealed class RateLimitTests(SqliteAppFixture fixture) : IClassFixture<Sql
         statuses.Should().Equal(HttpStatusCode.OK, HttpStatusCode.OK, HttpStatusCode.OK, HttpStatusCode.TooManyRequests);
         (await browser.GetAsync("/setup")).StatusCode.Should().Be(HttpStatusCode.OK);
         _ = code;
+    }
+
+    [Fact]
+    public async Task Api_rate_limit_is_per_user_not_per_address()
+    {
+        // In tests every request comes from the same (unknown) address, like users behind one proxy.
+        await using var app = fixture.CreateFreshApp(("Security:ApiRequestsPerMinute", "10"));
+        var ct = TestContext.Current.CancellationToken;
+        string alice, bob;
+        await using (var scope = app.Services.CreateAsyncScope())
+        {
+            var accounts = scope.ServiceProvider.GetRequiredService<AccountService>();
+            var tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
+            var aliceId = (await accounts.CreateUserAsync("alice", "a long password", false, ct)).UserId!.Value;
+            var bobId = (await accounts.CreateUserAsync("bob", "a long password", false, ct)).UserId!.Value;
+            alice = (await tokens.CreateAsync(aliceId, "t", null, ct)).PlainText;
+            bob = (await tokens.CreateAsync(bobId, "t", null, ct)).PlainText;
+        }
+
+        using var client = Browser.Open(app);
+        for (var i = 0; i < 10; i++)
+        {
+            (await client.ApiGetAsync("/api/v1/me", alice)).StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        (await client.ApiGetAsync("/api/v1/me", alice)).StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        (await client.ApiGetAsync("/api/v1/me", bob)).StatusCode.Should().Be(HttpStatusCode.OK, "Bob has his own allowance");
     }
 }

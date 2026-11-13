@@ -138,8 +138,8 @@ Folders map to `user/-/label/<name>`, Read Later to `starred`. Boards are not ex
 | D34 | Passwords: at least 10 characters, no composition rules; lockout after 5 failures for 15 minutes; hashing is Identity's default (PBKDF2) | NIST SP 800-63B favours length over composition |
 | D35 | Sign-in is by user name; email is optional and unused | Self-hosted, and there's no email sending |
 | D36 | Default registration mode is invite-only; the setup wizard and admin page choose the mode, stored in `AppSettings`, and `Registration:DefaultMode` only applies until then | Satisfies "admin can disable open registration" without guessing a default |
-| D37 | Disabling a user, resetting a password or changing roles rotates the security stamp; cookies are revalidated every minute, live Blazor circuits every minute, tokens on every request | Revocation takes effect promptly everywhere |
-| D38 | Rate limits: setup/login/register POSTs 10/min per IP; API 600/min per user (`Security:*`). Status codes re-execute to `/status/{code}` | Brute-force and abuse protection without limiting page views |
+| D37 | Disabling a user, resetting a password or changing roles rotates the security stamp; cookies are revalidated every minute, live Blazor circuits every minute, tokens on every request | Revocation takes effect promptly everywhere. Only a *disabled* account (lockout end = max) loses its tokens and sessions; a temporary lockout from wrong passwords blocks web sign-in only, so a stranger who knows a user name can't take that user's sync apps offline |
+| D38 | Rate limits: setup/login/register POSTs 10/min per IP; API 600/min per user (`Security:*`). Status codes re-execute to `/status/{code}` | Brute-force and abuse protection without limiting page views. The limiter runs after authorization so API requests are partitioned by token owner |
 
 ## 5. Dependencies (all pre-approved by the stack; listed so later PRs don't stall)
 

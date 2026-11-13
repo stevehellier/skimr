@@ -24,7 +24,7 @@ internal sealed class RevalidatingAuthenticationStateProvider(
         await using var scope = scopes.CreateAsyncScope();
         var users = scope.ServiceProvider.GetRequiredService<UserManager<SkimrUser>>();
         var user = await users.GetUserAsync(state.User);
-        if (user is null || await users.IsLockedOutAsync(user))
+        if (user is null || AccountService.IsDisabled(user))
         {
             return false;
         }
