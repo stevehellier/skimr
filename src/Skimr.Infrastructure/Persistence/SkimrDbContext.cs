@@ -176,10 +176,18 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options)
         modelBuilder.Entity<UserArticle>(e =>
         {
             e.HasKey(x => new { x.UserId, x.ArticleId });
-            e.HasIndex(x => new { x.UserId, x.IsRead, x.FeedId });
+            // Unread counts (PLAN D1, D57): a partial index over unread rows only. With IsRead as a
+            // key column, SQLite judged the boolean unselective, picked another index and read every
+            // row: 300 ms at 200k articles. The filter must read exactly as EF writes !IsRead, or the
+            // planner won't use the index (SQLite matches the WHERE clause by form).
+            e.HasIndex(x => new { x.UserId, x.FeedId }, "IX_UserArticles_Unread").HasFilter("NOT \"IsRead\"");
+            // A second one in date order for unread-only pages; with only the first, SQLite read all
+            // unread rows and sorted them (100 ms) instead of walking by date (1 ms).
+            e.HasIndex(x => new { x.UserId, x.PublishedAt, x.ArticleId, x.FeedId }, "IX_UserArticles_UnreadByDate").HasFilter("NOT \"IsRead\"");
             e.HasIndex(x => new { x.UserId, x.FeedId, x.PublishedAt, x.ArticleId });
             e.HasIndex(x => new { x.UserId, x.PublishedAt, x.ArticleId });
-            e.HasIndex(x => new { x.UserId, x.IsSaved, x.SavedAt });
+            // Read Later: partial, for the same reason as the unread ones (a boolean key column is ignored).
+            e.HasIndex(x => new { x.UserId, x.PublishedAt, x.ArticleId }, "IX_UserArticles_Saved").HasFilter("\"IsSaved\"");
             e.HasIndex(x => x.ArticleId);
             e.HasOne(x => x.Article).WithMany().HasForeignKey(x => x.ArticleId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);

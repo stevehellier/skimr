@@ -622,13 +622,18 @@ namespace Skimr.Infrastructure.Postgres.Migrations
 
                     b.HasIndex("ArticleId");
 
-                    b.HasIndex("UserId", "IsRead", "FeedId");
-
-                    b.HasIndex("UserId", "IsSaved", "SavedAt");
-
                     b.HasIndex("UserId", "PublishedAt", "ArticleId");
 
                     b.HasIndex("UserId", "FeedId", "PublishedAt", "ArticleId");
+
+                    b.HasIndex(new[] { "UserId", "PublishedAt", "ArticleId" }, "IX_UserArticles_Saved")
+                        .HasFilter("\"IsSaved\"");
+
+                    b.HasIndex(new[] { "UserId", "FeedId" }, "IX_UserArticles_Unread")
+                        .HasFilter("NOT \"IsRead\"");
+
+                    b.HasIndex(new[] { "UserId", "PublishedAt", "ArticleId", "FeedId" }, "IX_UserArticles_UnreadByDate")
+                        .HasFilter("NOT \"IsRead\"");
 
                     b.ToTable("UserArticles");
                 });

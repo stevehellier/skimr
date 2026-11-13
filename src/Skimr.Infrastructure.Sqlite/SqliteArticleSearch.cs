@@ -15,7 +15,7 @@ public sealed class SqliteArticleSearch : IArticleSearch
         var match = ToFtsQuery(query);
         return match is null
             ? db.Articles.Where(_ => false).Select(a => a.Id)
-            : db.Database.SqlQuery<long>($"SELECT rowid AS \"Value\" FROM ArticleSearch WHERE ArticleSearch MATCH {match}");
+            : db.Database.SqlQuery<long>($"SELECT rowid AS \"Value\" FROM ArticleSearch WHERE ArticleSearch MATCH {match} ORDER BY rowid DESC LIMIT {IArticleSearch.MaxCandidates}");
     }
 
     /// <summary>

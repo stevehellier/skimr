@@ -9,5 +9,11 @@ namespace Skimr.Infrastructure.Reading;
 /// </summary>
 public interface IArticleSearch
 {
+    /// <summary>
+    /// Only the newest this many matching articles are considered (PLAN D56). A word in every
+    /// article would otherwise make search scan the whole index (360 ms at 200k articles).
+    /// </summary>
+    public const int MaxCandidates = 5000;
+
     IQueryable<long> MatchingArticleIds(SkimrDbContext db, string query);
 }

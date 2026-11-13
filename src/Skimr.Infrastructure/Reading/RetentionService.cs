@@ -52,35 +52,42 @@ public sealed partial class RetentionService(IDbContextFactory<SkimrDbContext> c
     /// </summary>
     private async Task<int> PurgeUserRowsAsync(DateTime cutoff, CancellationToken cancellationToken)
     {
-        var total = 0;
-        while (true)
+        List<Guid> users;
+        await using (var db = await contexts.CreateDbContextAsync(cancellationToken))
         {
-            await using var db = await contexts.CreateDbContextAsync(cancellationToken);
-            var batch = await db.UserArticles
-                .Where(u => u.IsRead && !u.IsSaved && u.PublishedAt < cutoff
-                    && !db.BoardArticles.Any(b => b.ArticleId == u.ArticleId && b.Board!.UserId == u.UserId))
-                .Select(u => new { u.UserId, u.ArticleId })
-                .Take(BatchSize)
-                .ToListAsync(cancellationToken);
-            if (batch.Count == 0)
-            {
-                return total;
-            }
+            users = await db.Users.Select(u => u.Id).ToListAsync(cancellationToken);
+        }
 
-            foreach (var group in batch.GroupBy(k => k.UserId))
+        // User by user, so each batch is a range scan on (UserId, PublishedAt, ...) rather than a
+        // scan of every row in the table (results/phase5-perf).
+        var total = 0;
+        foreach (var userId in users)
+        {
+            while (true)
             {
-                var userId = group.Key;
-                var articleIds = group.Select(k => k.ArticleId).ToList();
+                await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+                var articleIds = await db.UserArticles
+                    .Where(u => u.UserId == userId && u.PublishedAt < cutoff && u.IsRead && !u.IsSaved
+                        && !db.BoardArticles.Any(b => b.ArticleId == u.ArticleId && b.Board!.UserId == userId))
+                    .Select(u => u.ArticleId)
+                    .Take(BatchSize)
+                    .ToListAsync(cancellationToken);
+                if (articleIds.Count == 0)
+                {
+                    break;
+                }
+
                 total += await db.UserArticles
                     .Where(u => u.UserId == userId && articleIds.Contains(u.ArticleId))
                     .ExecuteDeleteAsync(cancellationToken);
-            }
-
-            if (batch.Count < BatchSize)
-            {
-                return total;
+                if (articleIds.Count < BatchSize)
+                {
+                    break;
+                }
             }
         }
+
+        return total;
     }
 
     private async Task<int> InBatchesAsync<T>(Func<SkimrDbContext, IQueryable<T>> batch, CancellationToken cancellationToken)

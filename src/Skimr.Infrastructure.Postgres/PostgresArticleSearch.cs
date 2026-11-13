@@ -27,6 +27,8 @@ public sealed class PostgresArticleSearch : IArticleSearch
             return db.Articles
                 .Where(a => EF.Functions.ToTsVector("simple", a.Title + " " + (a.SearchText ?? ""))
                     .Matches(EF.Functions.WebSearchToTsQuery("simple", query)))
+                .OrderByDescending(a => a.Id)
+                .Take(IArticleSearch.MaxCandidates)
                 .Select(a => a.Id);
         }
 
@@ -36,6 +38,8 @@ public sealed class PostgresArticleSearch : IArticleSearch
             : db.Articles
                 .Where(a => EF.Functions.ToTsVector("simple", a.Title + " " + (a.SearchText ?? ""))
                     .Matches(EF.Functions.ToTsQuery("simple", prefixQuery)))
+                .OrderByDescending(a => a.Id)
+                .Take(IArticleSearch.MaxCandidates)
                 .Select(a => a.Id);
     }
 

@@ -285,9 +285,13 @@ public sealed class PostgresPowerFeatureTests(PostgresAppFixture fixture) : Powe
         await using var scope = fixture.Factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SkimrDbContext>();
         var generated = scope.ServiceProvider.GetRequiredService<IArticleSearch>().MatchingArticleIds(db, "kestrel").ToQueryString();
-        // ToQueryString lists parameters as "-- @name=value" comments; inline them for EXPLAIN.
-        var sql = string.Join('\n', generated.Split('\n').Where(l => !l.StartsWith("--", StringComparison.Ordinal)))
-            .Replace("@query", "'kestrel'", StringComparison.Ordinal);
+        // ToQueryString lists parameters as "-- @name='value' (DbType = ...)" comments; inline them for EXPLAIN.
+        var lines = generated.Split('\n');
+        var sql = string.Join('\n', lines.Where(l => !l.StartsWith("--", StringComparison.Ordinal)));
+        foreach (var match in lines.Select(l => System.Text.RegularExpressions.Regex.Match(l, @"^-- (@\w+)=(\S+)")).Where(m => m.Success).OrderByDescending(m => m.Groups[1].Value.Length))
+        {
+            sql = sql.Replace(match.Groups[1].Value, match.Groups[2].Value, StringComparison.Ordinal);
+        }
 
         await using var connection = db.Database.GetDbConnection();
         await connection.OpenAsync(TestContext.Current.CancellationToken);
