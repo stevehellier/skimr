@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+  xmlns:content="http://purl.org/rss/1.0/modules/content/"
+  xmlns:dc="http://purl.org/dc/elements/1.1/"
+  xmlns:atom="http://www.w3.org/2005/Atom"
+  xmlns:media="http://search.yahoo.com/mrss/">
+<channel>
+  <title>Example &amp; Co Blog</title>
+  <atom:link href="https://blog.example.com/feed/" rel="self" type="application/rss+xml" />
+  <atom:link href="https://pubsubhubbub.appspot.com/" rel="hub" />
+  <link>https://blog.example.com</link>
+  <description>Notes &lt;b&gt;and&lt;/b&gt; things</description>
+  <lastBuildDate>Tue, 10 Nov 2026 08:00:00 +0000</lastBuildDate>
+  <item>
+    <title>First &lt;em&gt;post&lt;/em&gt; &amp;amp; more</title>
+    <link>https://blog.example.com/2026/11/first-post/</link>
+    <dc:creator><![CDATA[Jane Doe]]></dc:creator>
+    <pubDate>Tue, 10 Nov 2026 07:30:00 +0000</pubDate>
+    <guid isPermaLink="false">https://blog.example.com/?p=101</guid>
+    <description><![CDATA[Short summary of the first post&#8230;]]></description>
+    <content:encoded><![CDATA[<p>Full <strong>content</strong> with an image <img src="https://blog.example.com/wp-content/a.jpg" alt="A"></p><script>alert(1)</script>]]></content:encoded>
+    <media:thumbnail url="https://blog.example.com/wp-content/a-thumb.jpg" />
+  </item>
+  <item>
+    <title>Second post</title>
+    <link>https://blog.example.com/2026/11/second-post/</link>
+    <pubDate>Mon, 09 Nov 2026 12:00:00 GMT</pubDate>
+    <guid>https://blog.example.com/2026/11/second-post/</guid>
+    <description>Plain description only</description>
+    <enclosure url="https://blog.example.com/wp-content/b.png" length="1234" type="image/png" />
+  </item>
+</channel>
+</rss>

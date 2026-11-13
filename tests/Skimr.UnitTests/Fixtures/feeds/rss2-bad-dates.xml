@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+<channel>
+  <title>Bad dates</title>
+  <link>https://dates.example.com/</link>
+  <item><title>Named zone</title><guid>d1</guid><pubDate>Wed, 04 Nov 2026 10:00:00 EST</pubDate></item>
+  <item><title>No day name</title><guid>d2</guid><pubDate>04 Nov 2026 10:00:00 +0100</pubDate></item>
+  <item><title>ISO in pubDate</title><guid>d3</guid><pubDate>2026-11-04T10:00:00Z</pubDate></item>
+  <item><title>Two digit year</title><guid>d4</guid><pubDate>Wed, 04 Nov 26 10:00:00 GMT</pubDate></item>
+  <item><title>Wrong day name</title><guid>d5</guid><pubDate>Mon, 04 Nov 2026 10:00:00 GMT</pubDate></item>
+  <item><title>Garbage</title><guid>d6</guid><pubDate>sometime last week</pubDate></item>
+  <item><title>dc:date only</title><guid>d7</guid><dc:date>2026-11-04T10:00:00+02:00</dc:date></item>
+  <item><title>Full month name</title><guid>d8</guid><pubDate>Wednesday, 04 November 2026 10:00:00 GMT</pubDate></item>
+  <item><title>Future</title><guid>d9</guid><pubDate>Fri, 01 Jan 2100 00:00:00 GMT</pubDate></item>
+  <item><title>Single digit day, no seconds</title><guid>d10</guid><pubDate>Wed, 4 Nov 2026 10:00 GMT</pubDate></item>
+</channel>
+</rss>
