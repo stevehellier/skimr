@@ -1,0 +1,112 @@
+@page "/settings"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@implements IAsyncDisposable
+@using System.Security.Claims
+@using Skimr.Domain
+@using Skimr.Infrastructure.Reading
+@inject ReadingService Reading
+@inject IJSRuntime JS
+
+<PageTitle>Settings · Skimr</PageTitle>
+
+<h1>Settings</h1>
+
+@if (_saved)
+{
+    <p class="alert ok" role="status">Saved.</p>
+}
+
+<section aria-labelledby="theme-heading">
+    <h2 id="theme-heading">Theme</h2>
+    <p class="hint">Applies to this device.</p>
+    <fieldset class="choices">
+        <legend class="visually-hidden">Theme</legend>
+        @foreach (var (value, label) in Themes)
+        {
+            <label class="check">
+                <input type="radio" name="theme" checked="@(_theme == value)" @onchange="() => SetThemeAsync(value)" />
+                @label
+            </label>
+        }
+    </fieldset>
+</section>
+
+<section aria-labelledby="read-heading">
+    <h2 id="read-heading">Marking articles read</h2>
+    <fieldset class="choices">
+        <legend class="visually-hidden">Mark read</legend>
+        @foreach (var (mode, label) in Modes)
+        {
+            <label class="check">
+                <input type="radio" name="mark-read" checked="@(_mode == mode)" @onchange="() => SetModeAsync(mode)" />
+                @label
+            </label>
+        }
+    </fieldset>
+</section>
+
+@code {
+    private static readonly (string Value, string Label)[] Themes = [("system", "Match my device"), ("light", "Light"), ("dark", "Dark")];
+
+    private static readonly (MarkReadMode Mode, string Label)[] Modes =
+    [
+        (MarkReadMode.OnOpen, "When I open an article"),
+        (MarkReadMode.OnScroll, "When I open it or scroll past it in the list"),
+        (MarkReadMode.Manual, "Only when I mark it read"),
+    ];
+
+    private Guid _userId;
+    private MarkReadMode _mode;
+    private string _theme = "system";
+    private bool _saved;
+    private IJSObjectReference? _module;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthState { get; set; } = null!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = Guid.Parse((await AuthState).User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        _mode = await Reading.GetMarkReadModeAsync(_userId, CancellationToken.None);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/reader.js");
+            _theme = await _module.InvokeAsync<string>("getTheme");
+            StateHasChanged();
+        }
+    }
+
+    private async Task SetModeAsync(MarkReadMode mode)
+    {
+        _mode = mode;
+        await Reading.SetMarkReadModeAsync(_userId, mode, CancellationToken.None);
+        _saved = true;
+    }
+
+    private async Task SetThemeAsync(string theme)
+    {
+        _theme = theme;
+        _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/reader.js");
+        await _module.InvokeVoidAsync("setTheme", theme);
+        _saved = true;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_module is not null)
+            {
+                await _module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // The browser is already gone.
+        }
+    }
+}

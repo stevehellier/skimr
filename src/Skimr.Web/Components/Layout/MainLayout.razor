@@ -1,14 +1,19 @@
 @inherits LayoutComponentBase
 
+<a class="skip-link" href="#main">Skip to content</a>
+
 <header class="site-header">
     <a class="brand" href="">Skimr</a>
     <AuthorizeView>
         <Authorized>
-            <nav aria-label="Account">
-                <a href="account">@context.User.Identity?.Name</a>
+            <nav aria-label="Main">
+                <a href="">Reader</a>
+                <a href="organize">Organise</a>
+                <a href="settings">Settings</a>
                 <AuthorizeView Policy="@Policies.Admin" Context="admin">
                     <a href="admin/users">Users</a>
                 </AuthorizeView>
+                <a href="account">@context.User.Identity?.Name</a>
                 <form method="post" action="logout">
                     <AntiforgeryToken />
                     <button type="submit" class="link">Sign out</button>
@@ -18,7 +23,7 @@
     </AuthorizeView>
 </header>
 
-<main class="page">
+<main id="main" class="page">
     @Body
 </main>
 

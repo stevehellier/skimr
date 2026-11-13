@@ -1,0 +1,67 @@
+@using Skimr.Infrastructure.Reading
+
+<nav class="nav-panel" aria-label="Feeds">
+    <ul class="nav-list" role="list">
+        <li>@Link("", "All", Nav.AllUnread, ReaderView.All)</li>
+        <li>@Link("today", "Today", Nav.TodayUnread, ReaderView.Today)</li>
+        <li>@Link("saved", "Read Later", Nav.SavedCount, ReaderView.Saved)</li>
+    </ul>
+
+    @foreach (var folder in Nav.Folders)
+    {
+        <details class="nav-folder" open>
+            <summary>
+                @Link($"folder/{folder.Id}", folder.Name, folder.Unread, ReaderView.Folder(folder.Id))
+            </summary>
+            <ul class="nav-list sources" role="list">
+                @foreach (var source in folder.Sources)
+                {
+                    <li>@SourceLink(source)</li>
+                }
+            </ul>
+        </details>
+    }
+
+    @if (Nav.Unfiled.Count > 0)
+    {
+        <h2 class="nav-heading">Sources</h2>
+        <ul class="nav-list sources" role="list">
+            @foreach (var source in Nav.Unfiled)
+            {
+                <li>@SourceLink(source)</li>
+            }
+        </ul>
+    }
+
+    <div class="nav-actions">
+        <button type="button" class="secondary" @onclick="OnAddSource">+ Add source</button>
+        <a href="organize">Organise</a>
+    </div>
+</nav>
+
+@code {
+    [Parameter, EditorRequired]
+    public NavModel Nav { get; set; } = NavModel.Empty;
+
+    [Parameter]
+    public ReaderView Current { get; set; }
+
+    [Parameter]
+    public EventCallback OnAddSource { get; set; }
+
+    private RenderFragment Link(string href, string label, int count, ReaderView view) => @<a href="@href" class="nav-link @(view == Current ? "current" : null)" aria-current="@(view == Current ? "page" : null)">
+        <span class="label">@label</span>
+        @if (count > 0)
+        {
+            <span class="count" aria-label="@($"{count} unread")">@count</span>
+        }
+    </a>;
+
+    private RenderFragment SourceLink(NavSource source) => @<span class="nav-source">
+        @Link($"source/{source.SubscriptionId}", source.Title, source.Unread, ReaderView.Source(source.SubscriptionId))
+        @if (source.HasError)
+        {
+            <span class="source-error" title="This source failed on its last fetch" role="img" aria-label="Fetch error">!</span>
+        }
+    </span>;
+}

@@ -1,0 +1,79 @@
+@using Skimr.Domain
+@using Skimr.Infrastructure.Reading
+
+@if (Items.Count == 0)
+{
+    <p class="empty">@EmptyText</p>
+}
+else
+{
+    <ul class="article-list layout-@Layout.ToString().ToLowerInvariant()" role="list">
+        @foreach (var item in Items)
+        {
+            var selected = item.ArticleId == SelectedId;
+            <li @key="item.ArticleId" class="article-item @(item.IsRead ? "read" : "unread") @(selected ? "selected" : null)" data-article-id="@item.ArticleId">
+                <button type="button" class="open" id="@($"article-{item.ArticleId}")" aria-current="@(selected ? "true" : null)" @onclick="() => OnOpen.InvokeAsync(item.ArticleId)">
+                    @if (Layout != ArticleLayout.TitleOnly && item.ThumbnailUrl is not null)
+                    {
+                        <img class="thumb" src="@item.ThumbnailUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                    }
+                    <span class="text">
+                        <span class="title">@item.Title</span>
+                        <span class="meta">
+                            <span class="source">@item.SourceTitle</span>
+                            <time datetime="@item.PublishedAt.ToString("O")" title="@item.PublishedAt.ToString("yyyy-MM-dd HH:mm") UTC">@Age(item.PublishedAt)</time>
+                        </span>
+                        @if (Layout != ArticleLayout.TitleOnly && !string.IsNullOrEmpty(item.Snippet))
+                        {
+                            <span class="snippet">@item.Snippet</span>
+                        }
+                    </span>
+                </button>
+                <span class="item-actions">
+                    <button type="button" class="icon" aria-pressed="@(item.IsSaved ? "true" : "false")" title="Read later (s)" @onclick="() => OnToggleSaved.InvokeAsync(item.ArticleId)">
+                        <span aria-hidden="true">@(item.IsSaved ? "★" : "☆")</span><span class="visually-hidden">Read later</span>
+                    </button>
+                    <button type="button" class="icon" aria-pressed="@(item.IsRead ? "true" : "false")" title="Mark read (m)" @onclick="() => OnToggleRead.InvokeAsync(item.ArticleId)">
+                        <span aria-hidden="true">@(item.IsRead ? "○" : "●")</span><span class="visually-hidden">Read</span>
+                    </button>
+                </span>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<ArticleListItem> Items { get; set; } = [];
+
+    [Parameter]
+    public ArticleLayout Layout { get; set; } = ArticleLayout.Magazine;
+
+    [Parameter]
+    public long? SelectedId { get; set; }
+
+    [Parameter]
+    public string EmptyText { get; set; } = "Nothing to read here.";
+
+    [Parameter]
+    public DateTime Now { get; set; } = DateTime.UtcNow;
+
+    [Parameter]
+    public EventCallback<long> OnOpen { get; set; }
+
+    [Parameter]
+    public EventCallback<long> OnToggleSaved { get; set; }
+
+    [Parameter]
+    public EventCallback<long> OnToggleRead { get; set; }
+
+    private string Age(DateTime published)
+    {
+        var age = Now - published;
+        return age.TotalMinutes < 1 ? "now"
+            : age.TotalHours < 1 ? $"{(int)age.TotalMinutes}m"
+            : age.TotalDays < 1 ? $"{(int)age.TotalHours}h"
+            : age.TotalDays < 30 ? $"{(int)age.TotalDays}d"
+            : published.ToString("d MMM yyyy");
+    }
+}

@@ -1,38 +1,71 @@
-/* Base styles. Phase 4 adds the reader layout and the light/dark/system theme switch. */
+/* Skimr styles. Hand-written, no framework. Themes: <html data-theme="light|dark|system">. */
+
+/* ---- Theme tokens ------------------------------------------------------------------ */
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --bg: #ffffff;
-  --surface: #f4f5f7;
-  --text: #1c1e21;
-  --muted: #5b616b;
-  --border: #d0d4da;
-  --accent: #1f6f43;
+  --surface: #f3f4f6;
+  --surface-raised: #ffffff;
+  --text: #1b1d21;
+  --muted: #545a64;
+  --border: #c9ced6;
+  --accent: #1d6b41;
   --accent-text: #ffffff;
-  --danger: #b3261e;
-  --ok-bg: #e6f4ea;
-  --error-bg: #fce8e6;
-  --focus: #1a5fd0;
+  --danger: #b0261d;
+  --ok-bg: #e4f3e8;
+  --error-bg: #fbe7e5;
+  --focus: #1757c2;
+  --unread: #1b1d21;
+  --read: #626873;
+  --selected: #e3efe7;
   --radius: 6px;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   line-height: 1.5;
 }
 
+/* Dark values appear twice: once for "system" on a dark device, once for an explicit choice. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #15171a;
-    --surface: #1f2226;
-    --text: #e8eaed;
-    --muted: #a3a9b2;
-    --border: #3a3f46;
-    --accent: #5cc48a;
-    --accent-text: #0c1a12;
-    --danger: #f2817a;
-    --ok-bg: #1d3325;
-    --error-bg: #3d1f1d;
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #141619;
+    --surface: #1d2025;
+    --surface-raised: #23272d;
+    --text: #e7e9ec;
+    --muted: #a6adb7;
+    --border: #3b4048;
+    --accent: #63c98f;
+    --accent-text: #0b1a11;
+    --danger: #f28b82;
+    --ok-bg: #1b3324;
+    --error-bg: #3e1f1c;
     --focus: #8ab4f8;
+    --unread: #f1f3f5;
+    --read: #a0a7b1;
+    --selected: #20352a;
   }
 }
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #141619;
+  --surface: #1d2025;
+  --surface-raised: #23272d;
+  --text: #e7e9ec;
+  --muted: #a6adb7;
+  --border: #3b4048;
+  --accent: #63c98f;
+  --accent-text: #0b1a11;
+  --danger: #f28b82;
+  --ok-bg: #1b3324;
+  --error-bg: #3e1f1c;
+  --focus: #8ab4f8;
+  --unread: #f1f3f5;
+  --read: #a0a7b1;
+  --selected: #20352a;
+}
+
+/* ---- Base -------------------------------------------------------------------------- */
 
 * {
   box-sizing: border-box;
@@ -53,17 +86,55 @@ a {
   outline-offset: 2px;
 }
 
-h1:focus {
+h1:focus,
+h2:focus {
   outline: none;
 }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip-link {
+  position: absolute;
+  left: -100vw;
+}
+
+.skip-link:focus {
+  left: 1rem;
+  top: 0.5rem;
+  z-index: 100;
+  background: var(--bg);
+  padding: 0.5rem 1rem;
+}
+
+kbd {
+  font: 0.85em ui-monospace, monospace;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 0.3em;
+}
+
+.hint {
+  color: var(--muted);
+}
+
+/* ---- Header ------------------------------------------------------------------------ */
 
 .site-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.75rem 1.25rem;
+  padding: 0.6rem 1.25rem;
   border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
 }
 
 .site-header .brand {
@@ -77,6 +148,7 @@ h1:focus {
   display: flex;
   align-items: center;
   gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .site-header form {
@@ -84,7 +156,7 @@ h1:focus {
 }
 
 .page {
-  max-width: 60rem;
+  max-width: 64rem;
   margin: 0 auto;
   padding: 1.5rem 1.25rem 3rem;
 }
@@ -93,10 +165,12 @@ section {
   margin-top: 2rem;
 }
 
+/* ---- Forms and buttons ------------------------------------------------------------- */
+
 .form {
   display: grid;
   gap: 0.4rem;
-  max-width: 26rem;
+  max-width: 28rem;
 }
 
 .form.inline {
@@ -110,11 +184,19 @@ section {
   margin-top: 0.5rem;
 }
 
-.form label.check {
+label.check {
   font-weight: 400;
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+
+fieldset.choices {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.75rem 0;
 }
 
 input,
@@ -124,28 +206,50 @@ button {
   color: inherit;
 }
 
-input:not([type="checkbox"]),
+input:not([type="checkbox"], [type="radio"]),
 select {
-  padding: 0.5rem 0.6rem;
+  padding: 0.45rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);
 }
 
-button {
-  padding: 0.5rem 1rem;
+button,
+a.button {
+  display: inline-block;
+  padding: 0.45rem 0.9rem;
   border: 1px solid var(--accent);
   border-radius: var(--radius);
   background: var(--accent);
   color: var(--accent-text);
   cursor: pointer;
+  text-decoration: none;
   justify-self: start;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+button.secondary,
+a.button.secondary {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border);
 }
 
 button.danger {
   border-color: var(--danger);
   background: transparent;
   color: var(--danger);
+}
+
+button.icon {
+  background: transparent;
+  color: var(--text);
+  border-color: transparent;
+  padding: 0.3rem 0.5rem;
 }
 
 button.link {
@@ -159,6 +263,33 @@ button.link {
 .form button {
   margin-top: 0.75rem;
 }
+
+.segmented {
+  display: inline-flex;
+}
+
+.segmented button {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border);
+  border-radius: 0;
+}
+
+.segmented button:first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.segmented button:last-child {
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+/* ---- Tables, alerts, dialogs ------------------------------------------------------- */
 
 table {
   width: 100%;
@@ -212,6 +343,30 @@ code.secret {
   user-select: all;
 }
 
+dialog {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--text);
+  max-width: min(36rem, calc(100vw - 2rem));
+  padding: 1.25rem 1.5rem;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+table.shortcuts th {
+  white-space: nowrap;
+}
+
 .validation-message,
 .validation-errors {
   color: var(--danger);
@@ -229,9 +384,486 @@ code.secret {
   right: 0;
   padding: 0.75rem 1.25rem;
   background: var(--error-bg);
+  z-index: 50;
 }
 
 #blazor-error-ui .dismiss {
   cursor: pointer;
   float: right;
+}
+
+/* ---- Reader layout ----------------------------------------------------------------- */
+
+/* The reader uses the full width instead of the centred page column. */
+.page:has(> .reader) {
+  max-width: none;
+  padding: 0;
+}
+
+.reader {
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 1fr);
+  min-height: calc(100vh - 3.2rem);
+}
+
+.reader.pane-open {
+  grid-template-columns: 16rem minmax(20rem, 1fr) minmax(0, 1.4fr);
+}
+
+.reader-nav {
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  padding: 0.75rem 0.5rem;
+  overflow-y: auto;
+}
+
+.reader-main {
+  margin: 0;
+  min-width: 0;
+  padding: 0 1rem 2rem;
+}
+
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar h1 {
+  font-size: 1.3rem;
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+.toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nav-toggle {
+  display: none;
+}
+
+.empty {
+  color: var(--muted);
+  padding: 2rem 0;
+}
+
+.load-more {
+  margin: 1rem 0;
+}
+
+/* ---- Nav --------------------------------------------------------------------------- */
+
+.nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nav-list.sources .nav-link {
+  padding-left: 1.4rem;
+  font-size: 0.95rem;
+}
+
+.nav-link {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius);
+  color: var(--text);
+  text-decoration: none;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.nav-link .label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-link:hover {
+  background: var(--selected);
+}
+
+.nav-link.current {
+  background: var(--selected);
+  font-weight: 600;
+}
+
+.nav-link .count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.nav-source {
+  display: flex;
+  align-items: center;
+}
+
+.source-error {
+  color: var(--danger);
+  font-weight: 700;
+  padding: 0 0.4rem;
+}
+
+.nav-folder {
+  margin-top: 0.5rem;
+}
+
+.nav-folder > summary {
+  list-style: none;
+  display: flex;
+  cursor: pointer;
+}
+
+.nav-folder > summary::-webkit-details-marker {
+  display: none;
+}
+
+.nav-folder > summary::before {
+  content: "▸";
+  padding: 0.3rem 0 0 0.3rem;
+  color: var(--muted);
+}
+
+.nav-folder[open] > summary::before {
+  content: "▾";
+}
+
+.nav-heading {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 1rem 0.6rem 0.25rem;
+}
+
+.nav-actions {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  padding: 0 0.6rem;
+}
+
+/* ---- Article list ------------------------------------------------------------------ */
+
+.article-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.article-item {
+  display: flex;
+  align-items: flex-start;
+  border-bottom: 1px solid var(--border);
+}
+
+.article-item.selected {
+  background: var(--selected);
+}
+
+.article-item .open {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 0.75rem;
+  text-align: left;
+  background: transparent;
+  color: var(--unread);
+  border: none;
+  border-radius: 0;
+  padding: 0.7rem 0.5rem;
+  min-width: 0;
+}
+
+.article-item.read .open {
+  color: var(--read);
+}
+
+.article-item .text {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.article-item .title {
+  font-weight: 600;
+}
+
+.article-item.read .title {
+  font-weight: 400;
+}
+
+.article-item .meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+  display: flex;
+  gap: 0.6rem;
+}
+
+.article-item .snippet {
+  color: var(--muted);
+  font-size: 0.92rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.article-item .thumb {
+  width: 6.5rem;
+  height: 4.5rem;
+  object-fit: cover;
+  border-radius: 4px;
+  flex: none;
+  background: var(--surface);
+}
+
+.item-actions {
+  display: flex;
+  flex-direction: column;
+  padding: 0.4rem 0.25rem;
+}
+
+.layout-titleonly .article-item .open {
+  padding: 0.45rem 0.5rem;
+}
+
+.layout-titleonly .article-item .text {
+  grid-auto-flow: column;
+  justify-content: start;
+  gap: 0.75rem;
+}
+
+.layout-titleonly .article-item .title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.layout-titleonly .item-actions {
+  flex-direction: row;
+  padding: 0.15rem;
+}
+
+.layout-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 1rem;
+  padding-top: 1rem;
+}
+
+.layout-cards .article-item {
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.layout-cards .article-item .open {
+  flex-direction: column;
+  padding: 0 0 0.6rem;
+}
+
+.layout-cards .article-item .thumb {
+  width: 100%;
+  height: 9rem;
+  border-radius: 0;
+}
+
+.layout-cards .article-item .text {
+  padding: 0 0.75rem;
+}
+
+.layout-cards .item-actions {
+  flex-direction: row;
+  align-self: flex-end;
+}
+
+/* ---- Article pane ------------------------------------------------------------------ */
+
+.article-pane {
+  margin: 0;
+  border-left: 1px solid var(--border);
+  padding: 0 1.5rem 3rem;
+  overflow-y: auto;
+  max-height: calc(100vh - 3.2rem);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+}
+
+.pane-toolbar {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.pane-toolbar .spacer {
+  flex: 1 1 auto;
+}
+
+.article-view {
+  max-width: 44rem;
+  margin: 0 auto;
+}
+
+.article-view h2 {
+  font-size: 1.6rem;
+  line-height: 1.25;
+  margin: 1.25rem 0 0.25rem;
+}
+
+.article-view .meta {
+  color: var(--muted);
+  margin-top: 0;
+}
+
+.article-body {
+  font-size: 1.08rem;
+  line-height: 1.65;
+  overflow-wrap: break-word;
+}
+
+.article-body img,
+.article-body video,
+.article-body iframe {
+  max-width: 100%;
+  height: auto;
+}
+
+.article-body iframe {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  border: 0;
+}
+
+.article-body pre {
+  overflow-x: auto;
+  background: var(--surface);
+  padding: 0.75rem;
+  border-radius: var(--radius);
+}
+
+.article-body blockquote {
+  border-left: 3px solid var(--border);
+  margin-left: 0;
+  padding-left: 1rem;
+  color: var(--muted);
+}
+
+/* ---- Organise ---------------------------------------------------------------------- */
+
+.source-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 0.6rem;
+}
+
+.source-card > summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+}
+
+.source-title {
+  font-weight: 600;
+}
+
+.health.good {
+  color: var(--accent);
+}
+
+.health.bad {
+  color: var(--danger);
+}
+
+.source-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  overflow-wrap: anywhere;
+}
+
+.source-facts dt {
+  color: var(--muted);
+}
+
+.source-facts dd {
+  margin: 0;
+}
+
+/* ---- Narrow screens ---------------------------------------------------------------- */
+
+/* Tablet: the article opens over the list instead of beside it. */
+@media (max-width: 1100px) {
+  .reader.pane-open {
+    grid-template-columns: 16rem minmax(0, 1fr);
+  }
+
+  .article-pane {
+    position: fixed;
+    inset: 0 0 0 16rem;
+    max-height: none;
+    z-index: 20;
+  }
+}
+
+/* Phone: the nav becomes a drawer and the article takes the whole screen. */
+@media (max-width: 700px) {
+  .reader,
+  .reader.pane-open {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nav-toggle {
+    display: inline-block;
+  }
+
+  .reader-nav {
+    display: none;
+  }
+
+  .reader.nav-open .reader-nav {
+    display: block;
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(20rem, 85vw);
+    z-index: 30;
+    box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.4);
+  }
+
+  .article-pane {
+    inset: 0;
+    padding: 0 1rem 3rem;
+  }
+
+  .article-item .thumb {
+    width: 4.5rem;
+    height: 3.5rem;
+  }
+
+  .toolbar-actions {
+    width: 100%;
+  }
 }
