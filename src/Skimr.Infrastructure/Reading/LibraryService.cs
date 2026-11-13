@@ -59,7 +59,8 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
         }
     }
 
-    public async Task<LibraryResult> SubscribeAsync(Guid userId, string feedUrl, IReadOnlyCollection<long> folderIds, CancellationToken cancellationToken)
+    /// <param name="titleHint">A title to show until the first fetch fills in the real one (e.g. from OPML).</param>
+    public async Task<LibraryResult> SubscribeAsync(Guid userId, string feedUrl, IReadOnlyCollection<long> folderIds, CancellationToken cancellationToken, string? titleHint = null)
     {
         if (!Uri.TryCreate(feedUrl.Trim(), UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") || uri.AbsoluteUri.Length > 2048)
         {
@@ -68,7 +69,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
 
         var url = uri.AbsoluteUri;
         var now = time.GetUtcNow().UtcDateTime;
-        var feedId = await FindOrCreateFeedAsync(url, now, cancellationToken);
+        var feedId = await FindOrCreateFeedAsync(url, StoredText.Fit(titleHint?.Trim(), 500), now, cancellationToken);
 
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         var existing = await db.Subscriptions.Where(s => s.UserId == userId && s.FeedId == feedId).Select(s => (long?)s.Id).SingleOrDefaultAsync(cancellationToken);
@@ -151,6 +152,25 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
         await AddToFoldersAsync(db, userId, subscription, wanted.Except(subscription.Folders.Select(f => f.FolderId)).ToList(), cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
+        return LibraryResult.Ok(subscriptionId);
+    }
+
+    /// <summary>Files an existing subscription into one more folder (both must be the user's).</summary>
+    public async Task<LibraryResult> AddToFolderAsync(Guid userId, long subscriptionId, long folderId, CancellationToken cancellationToken)
+    {
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        var subscription = await db.Subscriptions.Include(s => s.Folders).SingleOrDefaultAsync(s => s.Id == subscriptionId && s.UserId == userId, cancellationToken);
+        if (subscription is null)
+        {
+            return LibraryResult.Fail("Source not found.");
+        }
+
+        if (subscription.Folders.All(f => f.FolderId != folderId))
+        {
+            await AddToFoldersAsync(db, userId, subscription, [folderId], cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
         return LibraryResult.Ok(subscriptionId);
     }
 
@@ -316,7 +336,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
     /// Shared feed row for a URL. Two users adding a brand-new URL at once both try to insert;
     /// the unique index stops the second, which then uses the first one's row.
     /// </summary>
-    private async Task<long> FindOrCreateFeedAsync(string url, DateTime now, CancellationToken cancellationToken)
+    private async Task<long> FindOrCreateFeedAsync(string url, string? title, DateTime now, CancellationToken cancellationToken)
     {
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         var existing = await db.Feeds.Where(f => f.Url == url).Select(f => (long?)f.Id).SingleOrDefaultAsync(cancellationToken);
@@ -325,7 +345,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
             return existing.Value;
         }
 
-        var feed = new Feed { Url = url, CreatedAt = now, NextFetchAt = now };
+        var feed = new Feed { Url = url, Title = string.IsNullOrEmpty(title) ? null : title, CreatedAt = now, NextFetchAt = now };
         db.Feeds.Add(feed);
         try
         {

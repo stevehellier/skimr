@@ -133,6 +133,7 @@ app.MapStaticAssets().AllowAnonymous();
 
 app.MapAccountEndpoints();
 app.MapApi();
+app.MapReaderEndpoints();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
