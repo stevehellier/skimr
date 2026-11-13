@@ -17,5 +17,10 @@ public sealed class Subscription
 
     public bool AlwaysFetchFullText { get; set; }
 
+    /// <summary>Order among sources that aren't in any folder.</summary>
+    public int SortOrder { get; set; }
+
+    public List<SubscriptionFolder> Folders { get; } = [];
+
     public DateTime CreatedAt { get; set; }
 }

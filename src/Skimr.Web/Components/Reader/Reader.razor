@@ -1,0 +1,582 @@
+@page "/"
+@page "/today"
+@page "/saved"
+@page "/folder/{FolderId:long}"
+@page "/source/{SourceId:long}"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@implements IAsyncDisposable
+@using System.Security.Claims
+@using Skimr.Domain
+@using Skimr.Infrastructure.Reading
+@inject ReadingService Reading
+@inject LibraryService Library
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@inject TimeProvider Time
+
+<PageTitle>@Title · Skimr</PageTitle>
+<SessionWatch />
+
+<div class="reader @(_navOpen ? "nav-open" : null) @(_article is not null ? "pane-open" : null)">
+    <aside class="reader-nav" id="reader-nav">
+        <button type="button" class="secondary nav-close" @onclick="() => _navOpen = false">Close</button>
+        <NavPanel Nav="_nav" Current="_view" OnAddSource="OpenAddSourceAsync" />
+    </aside>
+
+    <section class="reader-main" aria-labelledby="view-title">
+        <div class="toolbar">
+            <button type="button" class="icon nav-toggle" aria-expanded="@(_navOpen ? "true" : "false")" aria-controls="reader-nav" @onclick="() => _navOpen = !_navOpen">
+                <span aria-hidden="true">☰</span><span class="visually-hidden">Show feeds</span>
+            </button>
+            <h1 id="view-title" tabindex="-1">@Title</h1>
+            <div class="toolbar-actions">
+                <div role="group" aria-label="Layout" class="segmented">
+                    @foreach (var layout in Enum.GetValues<ArticleLayout>())
+                    {
+                        <button type="button" aria-pressed="@(_preference.Layout == layout ? "true" : "false")" @onclick="() => SetLayoutAsync(layout)">@LayoutLabel(layout)</button>
+                    }
+                </div>
+                <label class="visually-hidden" for="sort">Sort</label>
+                <select id="sort" value="@_preference.Sort" @onchange="SetSortAsync">
+                    <option value="@ArticleSort.Newest">Newest first</option>
+                    <option value="@ArticleSort.Oldest">Oldest first</option>
+                </select>
+                @if (_view.Kind != ViewKind.Saved)
+                {
+                    <label class="check"><input type="checkbox" checked="@_preference.UnreadOnly" @onchange="SetUnreadOnlyAsync" /> Unread only</label>
+                    <button type="button" class="secondary" @onclick="OpenMarkAllAsync" title="Mark all as read (Shift+A)">Mark all read</button>
+                }
+                <button type="button" class="icon" @onclick="ShowHelpAsync" title="Keyboard shortcuts (?)"><span aria-hidden="true">?</span><span class="visually-hidden">Keyboard shortcuts</span></button>
+            </div>
+        </div>
+
+        @if (_loading)
+        {
+            <p class="empty" role="status">Loading…</p>
+        }
+        else
+        {
+            <ArticleList Items="_items" Layout="_preference.Layout" SelectedId="_article?.ArticleId" Now="Time.GetUtcNow().UtcDateTime"
+                         EmptyText="@EmptyText" OnOpen="OpenAsync" OnToggleSaved="ToggleSavedAsync" OnToggleRead="ToggleReadAsync" />
+            @if (_next is not null)
+            {
+                <div id="list-end"></div>
+                <button type="button" class="secondary load-more" @onclick="LoadMoreAsync" disabled="@_loadingMore">Load more</button>
+            }
+        }
+    </section>
+
+    @if (_article is not null)
+    {
+        <ArticlePane Article="_article" OnClose="CloseAsync" OnToggleSaved="() => ToggleSavedAsync(_article.ArticleId)" OnToggleRead="() => ToggleReadAsync(_article.ArticleId)" />
+    }
+</div>
+
+<dialog id="mark-all-dialog" aria-labelledby="mark-all-title">
+    <h2 id="mark-all-title">Mark as read in “@Title”</h2>
+    <div class="dialog-actions">
+        <button type="button" @onclick="() => MarkAllReadAsync(null)">Everything</button>
+        <button type="button" @onclick="() => MarkAllReadAsync(TimeSpan.FromDays(1))">Older than a day</button>
+        <button type="button" @onclick="() => MarkAllReadAsync(TimeSpan.FromDays(7))">Older than a week</button>
+        <button type="button" class="secondary" @onclick="@(() => CloseDialogAsync("mark-all-dialog"))">Cancel</button>
+    </div>
+</dialog>
+
+<dialog id="help-dialog" aria-labelledby="help-title">
+    <h2 id="help-title">Keyboard shortcuts</h2>
+    <table class="shortcuts">
+        <tbody>
+            <tr><th scope="row"><kbd>j</kbd> / <kbd>k</kbd></th><td>Next / previous article</td></tr>
+            <tr><th scope="row"><kbd>o</kbd> / <kbd>Enter</kbd></th><td>Open the selected article</td></tr>
+            <tr><th scope="row"><kbd>v</kbd></th><td>View the original page</td></tr>
+            <tr><th scope="row"><kbd>s</kbd></th><td>Save for later / unsave</td></tr>
+            <tr><th scope="row"><kbd>m</kbd></th><td>Toggle read</td></tr>
+            <tr><th scope="row"><kbd>Shift</kbd>+<kbd>A</kbd></th><td>Mark all as read</td></tr>
+            <tr><th scope="row"><kbd>g</kbd> then <kbd>a</kbd> / <kbd>t</kbd> / <kbd>s</kbd></th><td>Go to All / Today / Read Later</td></tr>
+            <tr><th scope="row"><kbd>Esc</kbd></th><td>Close the article or dialog</td></tr>
+            <tr><th scope="row"><kbd>?</kbd></th><td>This help</td></tr>
+        </tbody>
+    </table>
+    <p class="hint"><kbd>/</kbd> to search arrives with search.</p>
+    <div class="dialog-actions"><button type="button" @onclick="@(() => CloseDialogAsync("help-dialog"))">Close</button></div>
+</dialog>
+
+<dialog id="add-source-dialog" aria-labelledby="add-source-title">
+    <AddSource @ref="_addSource" UserId="_userId" Folders="_folders" OnSubscribed="OnSubscribedAsync" OnCancel="@(() => CloseDialogAsync("add-source-dialog"))" />
+</dialog>
+
+@code {
+    private Guid _userId;
+    private ReaderView _view;
+    private ReaderView? _loadedView;
+    private ViewPreference _preference = new() { ViewKey = "all" };
+    private MarkReadMode _markMode;
+    private NavModel _nav = NavModel.Empty;
+    private List<ArticleListItem> _items = [];
+    private ArticleCursor? _next;
+    private ArticleDetail? _article;
+    private IReadOnlyList<FolderDetails> _folders = [];
+    private AddSource? _addSource;
+    private bool _loading = true;
+    private bool _loadingMore;
+    private bool _navOpen;
+    private bool _listChanged;
+    private string? _focusAfterRender;
+
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<Reader>? _self;
+    private readonly CancellationTokenSource _disposed = new();
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthState { get; set; } = null!;
+
+    [Parameter]
+    public long? FolderId { get; set; }
+
+    [Parameter]
+    public long? SourceId { get; set; }
+
+    private string Title => _view.Kind switch
+    {
+        ViewKind.All => "All",
+        ViewKind.Today => "Today",
+        ViewKind.Saved => "Read Later",
+        ViewKind.Folder => _nav.Folders.FirstOrDefault(f => f.Id == _view.Id)?.Name ?? "Folder",
+        _ => _nav.Folders.SelectMany(f => f.Sources).Concat(_nav.Unfiled).FirstOrDefault(s => s.SubscriptionId == _view.Id)?.Title ?? "Source",
+    };
+
+    private string EmptyText => _view.Kind == ViewKind.Saved
+        ? "Nothing saved. Press s on an article to read it later."
+        : _nav.Folders.Count == 0 && _nav.Unfiled.Count == 0
+            ? "No sources yet. Use “+ Add source” to subscribe to a site or feed."
+            : _preference.UnreadOnly ? "All caught up." : "Nothing here yet. New articles appear after the next fetch.";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = (await AuthState).User;
+        _userId = Guid.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        _markMode = await Reading.GetMarkReadModeAsync(_userId, _disposed.Token);
+        _ = RefreshNavPeriodicallyAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var path = Navigation.ToBaseRelativePath(Navigation.Uri).Split('?')[0].TrimEnd('/');
+        _view = FolderId is { } folder ? ReaderView.Folder(folder)
+            : SourceId is { } source ? ReaderView.Source(source)
+            : path == "today" ? ReaderView.Today
+            : path == "saved" ? ReaderView.Saved
+            : ReaderView.All;
+
+        if (_loadedView != _view)
+        {
+            _loadedView = _view;
+            _article = null;
+            _navOpen = false;
+            _loading = true;
+            _preference = await Reading.GetViewPreferenceAsync(_userId, _view, _disposed.Token);
+            await Task.WhenAll(ReloadListAsync(), ReloadNavAsync());
+            _loading = false;
+            _focusAfterRender = "#view-title";
+
+            // A source that's empty is usually one just added: its first fetch runs in the
+            // background, so check back until articles arrive. (Navigating here creates a new
+            // instance of this page, so the subscribe handler can't do this itself.)
+            if (_view.Kind == ViewKind.Source && _items.Count == 0)
+            {
+                _ = WatchNewSourceAsync(_view);
+            }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // JS only exists once the circuit is up; there's no prerender for this page (PLAN D42).
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/reader.js");
+            _self = DotNetObjectReference.Create(this);
+            await _module.InvokeVoidAsync("init", _self);
+            await _module.InvokeVoidAsync("watchScroll", _markMode == MarkReadMode.OnScroll);
+        }
+
+        if (_module is null)
+        {
+            return;
+        }
+
+        if (_listChanged)
+        {
+            _listChanged = false;
+            await _module.InvokeVoidAsync("observeItems");
+        }
+
+        if (_focusAfterRender is { } selector)
+        {
+            _focusAfterRender = null;
+            await _module.InvokeVoidAsync("focus", selector);
+        }
+    }
+
+    // ---- Loading -----------------------------------------------------------------------
+
+    private async Task ReloadListAsync()
+    {
+        var page = await Reading.GetArticlesAsync(_userId, _view, _preference.Sort, _preference.UnreadOnly, null, _disposed.Token);
+        _items = page.Items.ToList();
+        _next = page.Next;
+        _listChanged = true;
+    }
+
+    private async Task ReloadNavAsync() => _nav = await Reading.GetNavAsync(_userId, _disposed.Token);
+
+    private async Task LoadMoreAsync()
+    {
+        if (_next is null || _loadingMore)
+        {
+            return;
+        }
+
+        _loadingMore = true;
+        try
+        {
+            var page = await Reading.GetArticlesAsync(_userId, _view, _preference.Sort, _preference.UnreadOnly, _next, _disposed.Token);
+            _items.AddRange(page.Items.Where(i => _items.All(x => x.ArticleId != i.ArticleId)));
+            _next = page.Next;
+            _listChanged = true;
+        }
+        finally
+        {
+            _loadingMore = false;
+        }
+    }
+
+    private async Task RefreshNavPeriodicallyAsync()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(60));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(_disposed.Token))
+            {
+                await InvokeAsync(async () =>
+                {
+                    await ReloadNavAsync();
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Circuit closed.
+        }
+    }
+
+    // ---- Preferences -------------------------------------------------------------------
+
+    private static string LayoutLabel(ArticleLayout layout) => layout switch
+    {
+        ArticleLayout.TitleOnly => "Titles",
+        ArticleLayout.Magazine => "Magazine",
+        _ => "Cards",
+    };
+
+    private Task SetLayoutAsync(ArticleLayout layout)
+    {
+        _preference.Layout = layout;
+        return SavePreferenceAsync(reload: false);
+    }
+
+    private Task SetSortAsync(ChangeEventArgs e)
+    {
+        _preference.Sort = Enum.Parse<ArticleSort>((string)e.Value!);
+        return SavePreferenceAsync(reload: true);
+    }
+
+    private Task SetUnreadOnlyAsync(ChangeEventArgs e)
+    {
+        _preference.UnreadOnly = (bool)e.Value!;
+        return SavePreferenceAsync(reload: true);
+    }
+
+    private async Task SavePreferenceAsync(bool reload)
+    {
+        await Reading.SaveViewPreferenceAsync(_userId, _view, _preference.Layout, _preference.Sort, _preference.UnreadOnly, _disposed.Token);
+        if (reload)
+        {
+            await ReloadListAsync();
+        }
+    }
+
+    // ---- Articles ----------------------------------------------------------------------
+
+    private async Task OpenAsync(long articleId)
+    {
+        _article = await Reading.GetArticleAsync(_userId, articleId, _disposed.Token);
+        if (_article is null)
+        {
+            return;
+        }
+
+        if (_markMode != MarkReadMode.Manual && !_article.IsRead)
+        {
+            await SetReadAsync(articleId, true);
+        }
+
+        _focusAfterRender = "#pane-title";
+    }
+
+    private Task CloseAsync()
+    {
+        if (_article is { } closed)
+        {
+            _focusAfterRender = $"#article-{closed.ArticleId}";
+        }
+
+        _article = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task ToggleReadAsync(long articleId)
+    {
+        var current = _items.FirstOrDefault(i => i.ArticleId == articleId)?.IsRead ?? _article?.IsRead ?? false;
+        await SetReadAsync(articleId, !current);
+    }
+
+    private async Task SetReadAsync(long articleId, bool read)
+    {
+        await Reading.SetReadAsync(_userId, [articleId], read, _disposed.Token);
+        Update(articleId, i => i with { IsRead = read });
+        if (_article?.ArticleId == articleId)
+        {
+            _article = _article with { IsRead = read };
+        }
+
+        await ReloadNavAsync();
+    }
+
+    private async Task ToggleSavedAsync(long articleId)
+    {
+        var saved = !(_items.FirstOrDefault(i => i.ArticleId == articleId)?.IsSaved ?? _article?.IsSaved ?? false);
+        await Reading.SetSavedAsync(_userId, articleId, saved, _disposed.Token);
+        Update(articleId, i => i with { IsSaved = saved });
+        if (_article?.ArticleId == articleId)
+        {
+            _article = _article with { IsSaved = saved };
+        }
+
+        await ReloadNavAsync();
+    }
+
+    private void Update(long articleId, Func<ArticleListItem, ArticleListItem> change)
+    {
+        var index = _items.FindIndex(i => i.ArticleId == articleId);
+        if (index >= 0)
+        {
+            _items[index] = change(_items[index]);
+        }
+    }
+
+    private async Task MarkAllReadAsync(TimeSpan? olderThan)
+    {
+        await Reading.MarkAllReadAsync(_userId, _view, olderThan, _disposed.Token);
+        await CloseDialogAsync("mark-all-dialog");
+        await Task.WhenAll(ReloadListAsync(), ReloadNavAsync());
+    }
+
+    // ---- Dialogs -----------------------------------------------------------------------
+
+    private async Task OpenMarkAllAsync() => await ShowDialogAsync("mark-all-dialog");
+
+    private async Task ShowHelpAsync() => await ShowDialogAsync("help-dialog");
+
+    private async Task OpenAddSourceAsync()
+    {
+        _folders = await Library.ListFoldersAsync(_userId, _disposed.Token);
+        _addSource?.Reset();
+        await ShowDialogAsync("add-source-dialog");
+    }
+
+    private async Task OnSubscribedAsync(long subscriptionId)
+    {
+        await CloseDialogAsync("add-source-dialog");
+        await ReloadNavAsync();
+        Navigation.NavigateTo($"source/{subscriptionId}");
+
+    }
+
+    private async Task WatchNewSourceAsync(ReaderView view)
+    {
+        try
+        {
+            for (var attempt = 0; attempt < 15; attempt++)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), _disposed.Token);
+                var done = false;
+                await InvokeAsync(async () =>
+                {
+                    if (_view != view)
+                    {
+                        done = true;
+                        return;
+                    }
+
+                    await Task.WhenAll(ReloadListAsync(), ReloadNavAsync());
+                    StateHasChanged();
+                    done = _items.Count > 0;
+                });
+                if (done)
+                {
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Circuit closed.
+        }
+    }
+
+    private async Task ShowDialogAsync(string id)
+    {
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("showDialog", id);
+        }
+    }
+
+    private async Task CloseDialogAsync(string id)
+    {
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("closeDialog", id);
+        }
+    }
+
+    // ---- Called from reader.js ---------------------------------------------------------
+
+    [JSInvokable]
+    public async Task OnShortcut(string key)
+    {
+        var index = _article is null ? -1 : _items.FindIndex(i => i.ArticleId == _article.ArticleId);
+        switch (key)
+        {
+            case "j":
+                if (index + 1 >= _items.Count)
+                {
+                    await LoadMoreAsync();
+                }
+
+                if (index + 1 < _items.Count)
+                {
+                    await OpenAsync(_items[index + 1].ArticleId);
+                }
+
+                break;
+            case "k":
+                if (index > 0)
+                {
+                    await OpenAsync(_items[index - 1].ArticleId);
+                }
+
+                break;
+            case "o" or "Enter":
+                if (_article is null && _items.Count > 0)
+                {
+                    await OpenAsync(_items[0].ArticleId);
+                }
+
+                break;
+            case "v":
+                if (_article?.Url is { } url && _module is not null)
+                {
+                    await _module.InvokeVoidAsync("openOriginal", url);
+                }
+
+                break;
+            case "s":
+                if (_article is not null)
+                {
+                    await ToggleSavedAsync(_article.ArticleId);
+                }
+
+                break;
+            case "m":
+                if (_article is not null)
+                {
+                    await ToggleReadAsync(_article.ArticleId);
+                }
+
+                break;
+            case "shift+a":
+                if (_view.Kind != ViewKind.Saved)
+                {
+                    await OpenMarkAllAsync();
+                }
+
+                break;
+            case "?":
+                await ShowHelpAsync();
+                break;
+            case "Escape":
+                await CloseAsync();
+                break;
+            case "ga":
+                Navigation.NavigateTo("");
+                break;
+            case "gt":
+                Navigation.NavigateTo("today");
+                break;
+            case "gs":
+                Navigation.NavigateTo("saved");
+                break;
+        }
+
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnScrolledPast(long[] articleIds)
+    {
+        var unread = articleIds.Where(id => _items.Any(i => i.ArticleId == id && !i.IsRead)).ToList();
+        if (unread.Count == 0)
+        {
+            return;
+        }
+
+        await Reading.SetReadAsync(_userId, unread, true, _disposed.Token);
+        foreach (var id in unread)
+        {
+            Update(id, i => i with { IsRead = true });
+        }
+
+        await ReloadNavAsync();
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnNearEnd()
+    {
+        await LoadMoreAsync();
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _disposed.CancelAsync();
+        _disposed.Dispose();
+        try
+        {
+            if (_module is not null)
+            {
+                await _module.InvokeVoidAsync("dispose");
+                await _module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // The browser is already gone.
+        }
+
+        _self?.Dispose();
+    }
+}

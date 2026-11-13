@@ -1,0 +1,48 @@
+@using Skimr.Infrastructure.Reading
+
+<section class="article-pane" aria-labelledby="pane-title">
+    <div class="pane-toolbar">
+        <button type="button" class="secondary" @onclick="OnClose" title="Close (Esc)">← Back</button>
+        <span class="spacer"></span>
+        <button type="button" class="icon" aria-pressed="@(Article.IsSaved ? "true" : "false")" @onclick="OnToggleSaved" title="Read later (s)">
+            @(Article.IsSaved ? "★ Saved" : "☆ Read later")
+        </button>
+        <button type="button" class="icon" aria-pressed="@(Article.IsRead ? "true" : "false")" @onclick="OnToggleRead" title="Toggle read (m)">
+            @(Article.IsRead ? "Mark unread" : "Mark read")
+        </button>
+        @if (Article.Url is not null)
+        {
+            <a class="button secondary" href="@Article.Url" target="_blank" rel="noopener noreferrer" title="View original (v)">View original ↗</a>
+        }
+    </div>
+
+    <article class="article-view">
+        <header>
+            <h2 id="pane-title" tabindex="-1">@Article.Title</h2>
+            <p class="meta">
+                <span class="source">@Article.SourceTitle</span>
+                @if (Article.Author is not null)
+                {
+                    <span> · @Article.Author</span>
+                }
+                <span> · <time datetime="@Article.PublishedAt.ToString("O")">@Article.PublishedAt.ToString("d MMM yyyy HH:mm") UTC</time></span>
+            </p>
+        </header>
+        @* Sanitised on ingest by ContentSanitizer; never render feed HTML that hasn't been. *@
+        <div class="article-body">@((MarkupString)Article.ContentHtml)</div>
+    </article>
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public ArticleDetail Article { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    [Parameter]
+    public EventCallback OnToggleSaved { get; set; }
+
+    [Parameter]
+    public EventCallback OnToggleRead { get; set; }
+}

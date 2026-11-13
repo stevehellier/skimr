@@ -53,7 +53,9 @@ builder.Services.AddSerilog((services, logger) => logger
         retainedFileCountLimit: 14),
     preserveStaticLogger: true);
 
-builder.Services.AddDbContext<SkimrDbContext>(options => _ = settings.Provider switch
+// The factory serves interactive UI services (a circuit outlives any one operation); it also
+// registers a scoped SkimrDbContext for Identity, the refresher and request-scoped code.
+builder.Services.AddDbContextFactory<SkimrDbContext>(options => _ = settings.Provider switch
 {
     DatabaseProvider.Sqlite => options.UseSkimrSqlite(settings.ConnectionString),
     DatabaseProvider.Postgres => options.UseSkimrPostgres(settings.ConnectionString),

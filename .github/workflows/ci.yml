@@ -18,8 +18,17 @@ jobs:
           global-json-file: global.json
       - run: dotnet restore
       - run: dotnet build --no-restore -c Release
+      # Headless Chromium for the Playwright E2E tests (agreed in Phase 4).
+      - run: pwsh tests/Skimr.E2ETests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
       # Postgres tests use Testcontainers; Docker is preinstalled on ubuntu-latest.
       - run: dotnet test --no-build -c Release
+      - name: Upload E2E screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: tests/Skimr.E2ETests/bin/Release/net10.0/screenshots/
+          if-no-files-found: ignore
 
   docker:
     runs-on: ubuntu-latest
@@ -62,6 +71,8 @@ jobs:
           html=$(curl -sf http://localhost:8080/setup)
           assets=$(echo "$html" | grep -oE '(href|src)="[^"]+\.(css|js)"' | sed -E 's/^(href|src)="//; s/"$//' | sort -u)
           echo "$assets" | grep -q "_framework/blazor.web" || { echo "page doesn't reference blazor.web.js"; exit 1; }
+          # Loaded with a dynamic import(), so it never appears in page HTML; check it explicitly.
+          assets="$assets js/reader.js"
           for asset in $assets; do
             code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8080/${asset#/}")
             echo "$code $asset"

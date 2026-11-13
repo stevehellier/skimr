@@ -13,6 +13,9 @@
     <ProjectReference Include="..\..\src\Skimr.Web\Skimr.Web.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\Skimr.UnitTests\Fetching\LocalHttpServer.cs" Link="Infrastructure\LocalHttpServer.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="AwesomeAssertions" />
   </ItemGroup>

@@ -26,8 +26,28 @@ internal sealed partial class FeedScheduler(
     private readonly Channel<long> _queue = Channel.CreateBounded<long>(Math.Max(options.Concurrency * 4, 16));
     private readonly ConcurrentDictionary<long, byte> _queued = new();
 
-    /// <summary>Queues a feed now, e.g. a new subscription or a manual refresh.</summary>
-    public async ValueTask EnqueueAsync(long feedId, CancellationToken cancellationToken)
+    /// <summary>
+    /// Asks for a feed to be fetched soon (new subscription, manual refresh). Never blocks a UI
+    /// request: if fetching is off or the queue is full it does nothing, and the feed's
+    /// NextFetchAt picks it up on a later tick.
+    /// </summary>
+    public bool TryEnqueue(long feedId)
+    {
+        if (!options.Enabled || !_queued.TryAdd(feedId, 0))
+        {
+            return false;
+        }
+
+        if (_queue.Writer.TryWrite(feedId))
+        {
+            return true;
+        }
+
+        _queued.TryRemove(feedId, out _);
+        return false;
+    }
+
+    private async ValueTask EnqueueAsync(long feedId, CancellationToken cancellationToken)
     {
         if (_queued.TryAdd(feedId, 0))
         {

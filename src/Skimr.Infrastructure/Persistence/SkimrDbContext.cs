@@ -16,6 +16,14 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options)
 
     public DbSet<Invite> Invites => Set<Invite>();
 
+    public DbSet<Folder> Folders => Set<Folder>();
+
+    public DbSet<SubscriptionFolder> SubscriptionFolders => Set<SubscriptionFolder>();
+
+    public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
+
+    public DbSet<ViewPreference> ViewPreferences => Set<ViewPreference>();
+
     public DbSet<Feed> Feeds => Set<Feed>();
 
     public DbSet<Article> Articles => Set<Article>();
@@ -53,6 +61,37 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options)
             e.Property(x => x.Note).HasMaxLength(200);
             e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.UsedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<Folder>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.HasIndex(x => new { x.UserId, x.Name }).IsUnique();
+            e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SubscriptionFolder>(e =>
+        {
+            e.HasKey(x => new { x.SubscriptionId, x.FolderId });
+            e.HasIndex(x => x.FolderId);
+            e.HasOne(x => x.Subscription).WithMany(s => s.Folders).HasForeignKey(x => x.SubscriptionId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Folder).WithMany(f => f.Subscriptions).HasForeignKey(x => x.FolderId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserPreferences>(e =>
+        {
+            e.HasKey(x => x.UserId);
+            e.Property(x => x.MarkReadMode).HasConversion<string>().HasMaxLength(20);
+            e.HasOne<SkimrUser>().WithOne().HasForeignKey<UserPreferences>(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ViewPreference>(e =>
+        {
+            e.HasKey(x => new { x.UserId, x.ViewKey });
+            e.Property(x => x.ViewKey).HasMaxLength(50);
+            e.Property(x => x.Layout).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Sort).HasConversion<string>().HasMaxLength(20);
+            e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<AppSetting>(e =>

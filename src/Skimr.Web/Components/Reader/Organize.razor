@@ -1,0 +1,297 @@
+@page "/organize"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Security.Claims
+@using Skimr.Infrastructure.Reading
+@inject LibraryService Library
+@inject TimeProvider Time
+
+<PageTitle>Organise · Skimr</PageTitle>
+<SessionWatch />
+
+<h1>Organise</h1>
+
+@if (_message is not null)
+{
+    <p class="alert @(_messageIsError ? "error" : "ok")" role="@(_messageIsError ? "alert" : "status")">@_message</p>
+}
+
+<section aria-labelledby="folders-heading">
+    <h2 id="folders-heading">Folders</h2>
+    <form class="form inline" @onsubmit="CreateFolderAsync">
+        <label for="new-folder">New folder</label>
+        <input id="new-folder" @bind="_newFolder" maxlength="100" />
+        <button type="submit">Create</button>
+    </form>
+
+    @if (_folders.Count > 0)
+    {
+        <table>
+            <thead><tr><th>Name</th><th>Order</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var folder in _folders)
+                {
+                    <tr @key="folder.Id">
+                        <td>
+                            <label class="visually-hidden" for="@($"folder-{folder.Id}")">Name of @folder.Name</label>
+                            <input id="@($"folder-{folder.Id}")" value="@folder.Name" maxlength="100" @onchange="e => RenameFolderAsync(folder.Id, (string?)e.Value)" />
+                        </td>
+                        <td class="actions">
+                            <button type="button" class="icon" @onclick="() => MoveFolderAsync(folder.Id, MoveDirection.Up)" title="Move up"><span aria-hidden="true">↑</span><span class="visually-hidden">Move @folder.Name up</span></button>
+                            <button type="button" class="icon" @onclick="() => MoveFolderAsync(folder.Id, MoveDirection.Down)" title="Move down"><span aria-hidden="true">↓</span><span class="visually-hidden">Move @folder.Name down</span></button>
+                        </td>
+                        <td><button type="button" class="danger" @onclick="() => DeleteFolderAsync(folder)">Delete</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <p class="hint">Deleting a folder keeps its sources.</p>
+    }
+</section>
+
+<section aria-labelledby="sources-heading">
+    <h2 id="sources-heading">Sources</h2>
+    @if (_sources.Count == 0)
+    {
+        <p>No sources yet. Add one from the reader with “+ Add source”.</p>
+    }
+
+    @foreach (var source in _sources)
+    {
+        <details class="source-card" @key="source.SubscriptionId">
+            <summary>
+                <span class="source-title">@source.Title</span>
+                <span class="health @(source.ConsecutiveFailures > 0 ? "bad" : "good")">@Health(source)</span>
+            </summary>
+
+            <dl class="source-facts">
+                <dt>Feed</dt><dd><code>@source.FeedUrl</code></dd>
+                @if (source.SiteUrl is not null)
+                {
+                    <dt>Site</dt><dd><a href="@source.SiteUrl" target="_blank" rel="noopener noreferrer">@source.SiteUrl</a></dd>
+                }
+                <dt>Last success</dt><dd>@When(source.LastSuccessAt)</dd>
+                @if (source.LastError is not null)
+                {
+                    <dt>Last error</dt><dd>@When(source.LastErrorAt): @source.LastError</dd>
+                }
+                <dt>Next fetch</dt><dd>@When(source.NextFetchAt)</dd>
+            </dl>
+
+            <div class="form">
+                <label for="@($"title-{source.SubscriptionId}")">Custom title (blank for the feed's own)</label>
+                <input id="@($"title-{source.SubscriptionId}")" value="@source.CustomTitle" maxlength="500" @onchange="e => _edits[source.SubscriptionId].Title = (string?)e.Value" />
+                <label for="@($"interval-{source.SubscriptionId}")">Refresh every (minutes, 5–1440; blank for the default)</label>
+                <input id="@($"interval-{source.SubscriptionId}")" type="number" min="5" max="1440" value="@source.RefreshMinutes" @onchange="e => _edits[source.SubscriptionId].Interval = (string?)e.Value" />
+                @if (_folders.Count > 0)
+                {
+                    <fieldset class="choices">
+                        <legend>Folders</legend>
+                        @foreach (var folder in _folders)
+                        {
+                            <label class="check">
+                                <input type="checkbox" checked="@source.FolderIds.Contains(folder.Id)" @onchange="e => ToggleFolder(source.SubscriptionId, folder.Id, (bool)e.Value!)" />
+                                @folder.Name
+                            </label>
+                        }
+                    </fieldset>
+                }
+                <div class="dialog-actions">
+                    <button type="button" @onclick="() => SaveSourceAsync(source.SubscriptionId)">Save</button>
+                    <button type="button" class="secondary" @onclick="() => RefreshAsync(source.SubscriptionId)">Fetch now</button>
+                    @if (source.FolderIds.Count == 0)
+                    {
+                        <button type="button" class="icon" @onclick="() => MoveSourceAsync(source.SubscriptionId, MoveDirection.Up)"><span aria-hidden="true">↑</span><span class="visually-hidden">Move up</span></button>
+                        <button type="button" class="icon" @onclick="() => MoveSourceAsync(source.SubscriptionId, MoveDirection.Down)"><span aria-hidden="true">↓</span><span class="visually-hidden">Move down</span></button>
+                    }
+                    else
+                    {
+                        @foreach (var folderId in source.FolderIds)
+                        {
+                            var name = _folders.FirstOrDefault(f => f.Id == folderId)?.Name;
+                            <button type="button" class="icon" @onclick="() => MoveSourceAsync(source.SubscriptionId, MoveDirection.Up, folderId)"><span aria-hidden="true">↑</span><span class="visually-hidden">Move up in @name</span></button>
+                            <button type="button" class="icon" @onclick="() => MoveSourceAsync(source.SubscriptionId, MoveDirection.Down, folderId)"><span aria-hidden="true">↓</span><span class="visually-hidden">Move down in @name</span></button>
+                        }
+                    }
+                    <button type="button" class="danger" @onclick="() => UnsubscribeAsync(source)">Unsubscribe</button>
+                </div>
+            </div>
+        </details>
+    }
+</section>
+
+@code {
+    private Guid _userId;
+    private IReadOnlyList<FolderDetails> _folders = [];
+    private IReadOnlyList<SourceDetails> _sources = [];
+    private readonly Dictionary<long, Edit> _edits = [];
+    private string _newFolder = "";
+    private bool _busy;
+    private string? _message;
+    private bool _messageIsError;
+    private readonly HashSet<long> _confirmDelete = [];
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthState { get; set; } = null!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = Guid.Parse((await AuthState).User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _folders = await Library.ListFoldersAsync(_userId, CancellationToken.None);
+        _sources = await Library.ListSourcesAsync(_userId, CancellationToken.None);
+        _edits.Clear();
+        foreach (var source in _sources)
+        {
+            _edits[source.SubscriptionId] = new Edit
+            {
+                Title = source.CustomTitle,
+                Interval = source.RefreshMinutes?.ToString(),
+                Folders = source.FolderIds.ToHashSet(),
+            };
+        }
+    }
+
+    private string When(DateTime? at)
+    {
+        if (at is not { } value)
+        {
+            return "never";
+        }
+
+        var delta = value - Time.GetUtcNow().UtcDateTime;
+        var span = delta.Duration();
+        var text = span.TotalMinutes < 1 ? "under a minute" : span.TotalHours < 1 ? $"{(int)span.TotalMinutes} min" : span.TotalDays < 1 ? $"{(int)span.TotalHours} h" : $"{(int)span.TotalDays} days";
+        return delta < TimeSpan.Zero ? $"{text} ago" : $"in {text}";
+    }
+
+    private static string Health(SourceDetails source) => source.ConsecutiveFailures switch
+    {
+        0 when source.LastSuccessAt is null => "Not fetched yet",
+        0 => "OK",
+        1 => "1 failure",
+        var n => $"{n} failures in a row",
+    };
+
+    private void Show(LibraryResult result, string success)
+    {
+        _messageIsError = !result.Succeeded;
+        _message = result.Succeeded ? success : result.Error;
+    }
+
+    private async Task CreateFolderAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            Show(await Library.CreateFolderAsync(_userId, _newFolder, CancellationToken.None), "Folder created.");
+            _newFolder = "";
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RenameFolderAsync(long id, string? name)
+    {
+        Show(await Library.RenameFolderAsync(_userId, id, name ?? "", CancellationToken.None), "Folder renamed.");
+        await LoadAsync();
+    }
+
+    private async Task MoveFolderAsync(long id, MoveDirection direction)
+    {
+        await Library.MoveFolderAsync(_userId, id, direction, CancellationToken.None);
+        await LoadAsync();
+    }
+
+    private async Task DeleteFolderAsync(FolderDetails folder)
+    {
+        // Two clicks instead of a confirm() popup, which needs inline script.
+        if (_confirmDelete.Add(folder.Id))
+        {
+            _messageIsError = true;
+            _message = $"Click Delete again to delete “{folder.Name}”. Its sources stay subscribed.";
+            return;
+        }
+
+        _confirmDelete.Remove(folder.Id);
+        Show(await Library.DeleteFolderAsync(_userId, folder.Id, CancellationToken.None), "Folder deleted.");
+        await LoadAsync();
+    }
+
+    private void ToggleFolder(long subscriptionId, long folderId, bool on)
+    {
+        var folders = _edits[subscriptionId].Folders;
+        if (on)
+        {
+            folders.Add(folderId);
+        }
+        else
+        {
+            folders.Remove(folderId);
+        }
+    }
+
+    private async Task SaveSourceAsync(long subscriptionId)
+    {
+        var edit = _edits[subscriptionId];
+        int? interval = null;
+        if (!string.IsNullOrWhiteSpace(edit.Interval))
+        {
+            if (!int.TryParse(edit.Interval, out var minutes))
+            {
+                Show(LibraryResult.Fail("Refresh interval must be a whole number of minutes."), "");
+                return;
+            }
+
+            interval = minutes;
+        }
+
+        Show(await Library.UpdateSourceAsync(_userId, subscriptionId, edit.Title, interval, edit.Folders, CancellationToken.None), "Source saved.");
+        await LoadAsync();
+    }
+
+    private async Task RefreshAsync(long subscriptionId)
+    {
+        Show(await Library.RefreshNowAsync(_userId, subscriptionId, CancellationToken.None), "Fetch requested. Reload this page in a few seconds to see the result.");
+    }
+
+    private async Task MoveSourceAsync(long subscriptionId, MoveDirection direction, long? folderId = null)
+    {
+        await Library.MoveSourceAsync(_userId, folderId, subscriptionId, direction, CancellationToken.None);
+        await LoadAsync();
+    }
+
+    private async Task UnsubscribeAsync(SourceDetails source)
+    {
+        if (_confirmDelete.Add(-source.SubscriptionId))
+        {
+            _messageIsError = true;
+            _message = $"Click Unsubscribe again to drop “{source.Title}”. Articles you saved for later are kept.";
+            return;
+        }
+
+        _confirmDelete.Remove(-source.SubscriptionId);
+        Show(await Library.UnsubscribeAsync(_userId, source.SubscriptionId, CancellationToken.None), "Unsubscribed.");
+        await LoadAsync();
+    }
+
+    private sealed class Edit
+    {
+        public string? Title { get; set; }
+
+        public string? Interval { get; set; }
+
+        public HashSet<long> Folders { get; init; } = [];
+    }
+}

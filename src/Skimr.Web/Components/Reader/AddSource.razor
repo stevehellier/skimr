@@ -1,0 +1,146 @@
+@using Skimr.Infrastructure.Reading
+@inject LibraryService Library
+
+<h2 id="add-source-title">Add a source</h2>
+
+<form class="form" @onsubmit="DiscoverAsync">
+    <label for="source-url">Website or feed address</label>
+    <input id="source-url" @bind="_input" autocomplete="url" placeholder="example.com or https://example.com/feed" />
+    <button type="submit" disabled="@_busy">Find feeds</button>
+</form>
+
+@if (_busy)
+{
+    <p role="status">Looking…</p>
+}
+
+@if (_error is not null)
+{
+    <p class="alert error" role="alert">@_error</p>
+}
+
+@if (_found.Count > 0)
+{
+    <fieldset class="choices">
+        <legend>Feeds found</legend>
+        @foreach (var feed in _found)
+        {
+            <label class="check">
+                <input type="radio" name="feed-choice" checked="@(_choice == feed.Url)" @onchange="() => _choice = feed.Url" />
+                <span><strong>@(feed.Title ?? feed.Url)</strong><br /><small>@feed.Url</small></span>
+            </label>
+        }
+    </fieldset>
+
+    @if (Folders.Count > 0)
+    {
+        <fieldset class="choices">
+            <legend>Add to folders (optional)</legend>
+            @foreach (var folder in Folders)
+            {
+                <label class="check">
+                    <input type="checkbox" checked="@_folders.Contains(folder.Id)" @onchange="e => ToggleFolder(folder.Id, (bool)e.Value!)" />
+                    @folder.Name
+                </label>
+            }
+        </fieldset>
+    }
+
+    <button type="button" disabled="@(_choice is null || _busy)" @onclick="SubscribeAsync">Subscribe</button>
+}
+
+<p><button type="button" class="secondary" @onclick="OnCancel">Cancel</button></p>
+
+@code {
+    private string _input = "";
+    private bool _busy;
+    private string? _error;
+    private IReadOnlyList<DiscoveredSource> _found = [];
+    private string? _choice;
+    private readonly HashSet<long> _folders = [];
+
+    [Parameter, EditorRequired]
+    public Guid UserId { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<FolderDetails> Folders { get; set; } = [];
+
+    [Parameter]
+    public EventCallback<long> OnSubscribed { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    public void Reset()
+    {
+        _input = "";
+        _error = null;
+        _found = [];
+        _choice = null;
+        _folders.Clear();
+        StateHasChanged();
+    }
+
+    private async Task DiscoverAsync()
+    {
+        // A second click arrives while the first is still awaiting; ignore it.
+        if (_busy || string.IsNullOrWhiteSpace(_input))
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        _found = [];
+        try
+        {
+            var (found, error) = await Library.DiscoverAsync(_input, CancellationToken.None);
+            _found = found;
+            _error = error;
+            _choice = found.FirstOrDefault()?.Url;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void ToggleFolder(long id, bool on)
+    {
+        if (on)
+        {
+            _folders.Add(id);
+        }
+        else
+        {
+            _folders.Remove(id);
+        }
+    }
+
+    private async Task SubscribeAsync()
+    {
+        if (_busy || _choice is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await Library.SubscribeAsync(UserId, _choice, _folders, CancellationToken.None);
+            if (result.Succeeded)
+            {
+                await OnSubscribed.InvokeAsync(result.Id!.Value);
+                Reset();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}
