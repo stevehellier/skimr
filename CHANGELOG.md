@@ -3,6 +3,14 @@
 All notable changes to Skimr. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/) (0.x: the API and data format may still change).
 
+## [Unreleased]
+
+### Changed
+- The repository and the Docker image are public. The Compose files pull
+  `ghcr.io/stevehellier/skimr` (pin a release with `SKIMR_VERSION`) instead of building from source,
+  so the quick start needs only the Compose file.
+- Security reports go through GitHub's private vulnerability reporting.
+
 ## [0.1.1] - 2026-11-13
 
 ### Added

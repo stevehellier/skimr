@@ -1,14 +1,11 @@
 # Skimr with PostgreSQL 17.
-#   cp deploy/example.env deploy/.env      # then set POSTGRES_PASSWORD in deploy/.env
-#   docker compose -f deploy/docker-compose.postgres.yml up -d --build
+#   cp example.env .env      # then set POSTGRES_PASSWORD in .env (next to this file)
+#   docker compose -f docker-compose.postgres.yml up -d
 name: skimr-postgres
 
 services:
   skimr:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
-    image: skimr:local
+    image: ghcr.io/stevehellier/skimr:${SKIMR_VERSION:-latest}
     restart: unless-stopped
     ports:
       # Host port; change with SKIMR_PORT (in deploy/.env or the shell) if 8080 is taken.

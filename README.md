@@ -21,30 +21,32 @@ Windows and macOS. Licensed under the [GNU AGPL v3](LICENSE).
 
 ## Quick start (Docker)
 
-The image registry is private, so Compose builds the image from this checkout: about 1–2
-minutes the first time, plus downloading the .NET SDK and runtime images (about 1 GB) if they
-aren't cached yet.
+No clone needed: download the Compose file and start it.
 
 ```sh
-git clone https://github.com/stevehellier/skimr.git && cd skimr
-docker compose -f deploy/docker-compose.yml up -d --build
-docker compose -f deploy/docker-compose.yml logs skimr | grep "setup code"
+mkdir skimr && cd skimr
+curl -fsSLO https://raw.githubusercontent.com/stevehellier/skimr/main/deploy/docker-compose.yml
+docker compose up -d
+docker compose logs skimr | grep "setup code"
 ```
 
 Open <http://localhost:8080>, enter the setup code, and create the admin account. Then use
 **Organise → Import an OPML file**, or **+ Add source** with a site or feed address. Articles
 appear within a minute of adding a source.
 
-- Port 8080 taken (or reserved by Windows)? Set `SKIMR_PORT=9480` in your shell or in `deploy/.env`.
+- Port 8080 taken (or reserved by Windows)? Set `SKIMR_PORT=9480` in your shell or in a `.env` file
+  next to `docker-compose.yml`.
 - Everything persistent lives in the `skimr-data` volume (`/data` in the container).
-- With access to the registry, replace `build:` with `image: ghcr.io/stevehellier/skimr:latest`
-  after `docker login ghcr.io`. Images are built for `linux/amd64` and `linux/arm64` (Raspberry Pi 4/5).
+- The image is `ghcr.io/stevehellier/skimr`, for `linux/amd64` and `linux/arm64` (Raspberry Pi 4/5).
+  `latest` follows every release; pin one with `SKIMR_VERSION=0.1.1` (or `0.1` for that line's fixes).
 
 **PostgreSQL** instead of SQLite:
 
 ```sh
-cp deploy/example.env deploy/.env      # set POSTGRES_PASSWORD (openssl rand -base64 24)
-docker compose -f deploy/docker-compose.postgres.yml up -d --build
+curl -fsSLO https://raw.githubusercontent.com/stevehellier/skimr/main/deploy/docker-compose.postgres.yml
+curl -fsSL https://raw.githubusercontent.com/stevehellier/skimr/main/deploy/example.env -o .env
+# edit .env: set POSTGRES_PASSWORD (openssl rand -base64 24)
+docker compose -f docker-compose.postgres.yml up -d
 ```
 
 ## Bare metal (Linux, Windows, macOS)
@@ -212,9 +214,9 @@ directory still holds the keys.
 **Docker (SQLite):**
 
 ```sh
-docker compose -f deploy/docker-compose.yml stop
+docker compose stop
 docker run --rm -v skimr_skimr-data:/data -v "$PWD":/backup alpine tar czf /backup/skimr-backup.tgz -C /data .
-docker compose -f deploy/docker-compose.yml start
+docker compose start
 ```
 
 Restore by extracting into an empty volume (`tar xzf ... -C /data`) before starting. The
@@ -232,7 +234,8 @@ Copy the SQLite file only while Skimr is stopped: in WAL mode the `-wal` file ho
 
 Back up first. Database migrations run automatically at startup (`Database:AutoMigrate`).
 
-- **Docker:** `git pull`, then `docker compose -f deploy/docker-compose.yml up -d --build`.
+- **Docker:** `docker compose pull`, then `docker compose up -d` (with a pinned `SKIMR_VERSION`,
+  change it first).
 - **Linux:** unpack the new release and run `sudo ./install.sh` again. It keeps your data and settings.
 - **Windows:** unpack the new release and run `.\install.ps1` again.
 
@@ -257,6 +260,7 @@ See [CHANGELOG.md](CHANGELOG.md) for what changed.
 dotnet build          # 0 warnings required
 dotnet test           # Postgres tests need Docker
 dotnet run --project src/Skimr.Web
+docker build -f deploy/Dockerfile -t ghcr.io/stevehellier/skimr:dev .   # local image; SKIMR_VERSION=dev to use it
 ```
 
 Design notes, the data model and every decision are in [docs/PLAN.md](docs/PLAN.md). Test runs and

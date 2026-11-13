@@ -38,3 +38,15 @@ The first Postgres run failed at the import: the file was set before Blazor's `I
 - On this machine ports 7783-8382 are reserved by Windows (Hyper-V), so the runs used `SKIMR_PORT=9480/9481`.
 - EF logs one `ERR Failed executing DbCommand` on a fresh Postgres database: the first-start probe for the
   migrations history table. Harmless, but it looks alarming; documented in the README troubleshooting section.
+
+## Public image (after the repo and package went public)
+
+Only `deploy/docker-compose.yml` in an empty folder, Docker with an empty config (no registry login),
+`docker compose up -d` pulling `ghcr.io/stevehellier/skimr:latest` (= 0.1.1):
+
+| Step | Time |
+|---|---|
+| `up -d` to healthy | 9 s (image layers already cached from an anonymous pull of 0.1.1; a fresh machine downloads the image first: 252 MB unpacked) |
+| Setup done | 10.7 s |
+| OPML imported | 11.9 s |
+| First article open | 15.1 s |
