@@ -357,6 +357,31 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                     b.ToTable("Feeds");
                 });
 
+            modelBuilder.Entity("Skimr.Domain.Folder", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("Folders");
+                });
+
             modelBuilder.Entity("Skimr.Domain.Invite", b =>
                 {
                     b.Property<long>("Id")
@@ -421,6 +446,9 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                     b.Property<int?>("RefreshMinutes")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("TEXT");
 
@@ -432,6 +460,24 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                         .IsUnique();
 
                     b.ToTable("Subscriptions");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.SubscriptionFolder", b =>
+                {
+                    b.Property<long>("SubscriptionId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("FolderId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("SubscriptionId", "FolderId");
+
+                    b.HasIndex("FolderId");
+
+                    b.ToTable("SubscriptionFolders");
                 });
 
             modelBuilder.Entity("Skimr.Domain.UserArticle", b =>
@@ -473,6 +519,48 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                     b.HasIndex("UserId", "FeedId", "PublishedAt", "ArticleId");
 
                     b.ToTable("UserArticles");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.UserPreferences", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MarkReadMode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("UserPreferences");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.ViewPreference", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ViewKey")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Layout")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sort")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("UnreadOnly")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("UserId", "ViewKey");
+
+                    b.ToTable("ViewPreferences");
                 });
 
             modelBuilder.Entity("Skimr.Infrastructure.Identity.SkimrUser", b =>
@@ -614,6 +702,15 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                     b.Navigation("Feed");
                 });
 
+            modelBuilder.Entity("Skimr.Domain.Folder", b =>
+                {
+                    b.HasOne("Skimr.Infrastructure.Identity.SkimrUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Skimr.Domain.Invite", b =>
                 {
                     b.HasOne("Skimr.Infrastructure.Identity.SkimrUser", null)
@@ -644,6 +741,25 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                     b.Navigation("Feed");
                 });
 
+            modelBuilder.Entity("Skimr.Domain.SubscriptionFolder", b =>
+                {
+                    b.HasOne("Skimr.Domain.Folder", "Folder")
+                        .WithMany("Subscriptions")
+                        .HasForeignKey("FolderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Skimr.Domain.Subscription", "Subscription")
+                        .WithMany("Folders")
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Folder");
+
+                    b.Navigation("Subscription");
+                });
+
             modelBuilder.Entity("Skimr.Domain.UserArticle", b =>
                 {
                     b.HasOne("Skimr.Domain.Article", "Article")
@@ -661,9 +777,37 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                     b.Navigation("Article");
                 });
 
+            modelBuilder.Entity("Skimr.Domain.UserPreferences", b =>
+                {
+                    b.HasOne("Skimr.Infrastructure.Identity.SkimrUser", null)
+                        .WithOne()
+                        .HasForeignKey("Skimr.Domain.UserPreferences", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Skimr.Domain.ViewPreference", b =>
+                {
+                    b.HasOne("Skimr.Infrastructure.Identity.SkimrUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Skimr.Domain.Feed", b =>
                 {
                     b.Navigation("Subscriptions");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.Folder", b =>
+                {
+                    b.Navigation("Subscriptions");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.Subscription", b =>
+                {
+                    b.Navigation("Folders");
                 });
 #pragma warning restore 612, 618
         }
