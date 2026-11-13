@@ -3,6 +3,7 @@
 @using System.Security.Claims
 @using Skimr.Infrastructure.Reading
 @inject LibraryService Library
+@inject OpmlService Opml
 @inject TimeProvider Time
 
 <PageTitle>Organise · Skimr</PageTitle>
@@ -15,6 +16,15 @@
     <p class="alert @(_messageIsError ? "error" : "ok")" role="@(_messageIsError ? "alert" : "status")">@_message</p>
 }
 
+<section aria-labelledby="opml-heading">
+    <h2 id="opml-heading">Import and export</h2>
+    <p class="hint">OPML moves your sources between readers. Nested folders are flattened into names like “Tech / Rust”.</p>
+    <div class="form inline">
+        <label for="opml-file">Import an OPML file (up to 2 MB)</label>
+        <InputFile id="opml-file" OnChange="ImportAsync" accept=".opml,.xml,text/xml,application/xml,text/x-opml" disabled="@_busy" />
+        <a class="button secondary" href="opml/export" download>Export OPML</a>
+    </div>
+</section>
 <section aria-labelledby="folders-heading">
     <h2 id="folders-heading">Folders</h2>
     <form class="form inline" @onsubmit="CreateFolderAsync">
@@ -82,6 +92,7 @@
                 <input id="@($"title-{source.SubscriptionId}")" value="@source.CustomTitle" maxlength="500" @onchange="e => _edits[source.SubscriptionId].Title = (string?)e.Value" />
                 <label for="@($"interval-{source.SubscriptionId}")">Refresh every (minutes, 5–1440; blank for the default)</label>
                 <input id="@($"interval-{source.SubscriptionId}")" type="number" min="5" max="1440" value="@source.RefreshMinutes" @onchange="e => _edits[source.SubscriptionId].Interval = (string?)e.Value" />
+                <label class="check"><input type="checkbox" checked="@source.AlwaysFullText" @onchange="e => _edits[source.SubscriptionId].AlwaysFullText = (bool)e.Value!" /> Always load the full article when I open one</label>
                 @if (_folders.Count > 0)
                 {
                     <fieldset class="choices">
@@ -151,6 +162,7 @@
                 Title = source.CustomTitle,
                 Interval = source.RefreshMinutes?.ToString(),
                 Folders = source.FolderIds.ToHashSet(),
+                AlwaysFullText = source.AlwaysFullText,
             };
         }
     }
@@ -180,6 +192,42 @@
     {
         _messageIsError = !result.Succeeded;
         _message = result.Succeeded ? success : result.Error;
+    }
+
+    private async Task ImportAsync(InputFileChangeEventArgs e)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            byte[] bytes;
+            try
+            {
+                await using var stream = e.File.OpenReadStream(OpmlService.MaxUploadBytes);
+                using var buffer = new MemoryStream();
+                await stream.CopyToAsync(buffer);
+                bytes = buffer.ToArray();
+            }
+            catch (IOException)
+            {
+                Show(LibraryResult.Fail("That file is over 2 MB."), "");
+                return;
+            }
+
+            var result = await Opml.ImportAsync(_userId, bytes, CancellationToken.None);
+            var summary = $"Imported {result.Added} new sources ({result.AlreadySubscribed} already subscribed, {result.FoldersCreated} folders created). New sources fill in over the next minute.";
+            _messageIsError = result.Problems.Count > 0 && result.Added == 0 && result.AlreadySubscribed == 0;
+            _message = result.Problems.Count == 0 ? summary : summary + " Problems: " + string.Join("; ", result.Problems.Take(5));
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
     private async Task CreateFolderAsync()
@@ -257,7 +305,7 @@
             interval = minutes;
         }
 
-        Show(await Library.UpdateSourceAsync(_userId, subscriptionId, edit.Title, interval, edit.Folders, CancellationToken.None), "Source saved.");
+        Show(await Library.UpdateSourceAsync(_userId, subscriptionId, edit.Title, interval, edit.Folders, CancellationToken.None, edit.AlwaysFullText), "Source saved.");
         await LoadAsync();
     }
 
@@ -293,5 +341,7 @@
         public string? Interval { get; set; }
 
         public HashSet<long> Folders { get; init; } = [];
+
+        public bool AlwaysFullText { get; set; }
     }
 }

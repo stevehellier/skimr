@@ -24,6 +24,12 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options)
 
     public DbSet<ViewPreference> ViewPreferences => Set<ViewPreference>();
 
+    public DbSet<Board> Boards => Set<Board>();
+
+    public DbSet<BoardArticle> BoardArticles => Set<BoardArticle>();
+
+    public DbSet<Icon> Icons => Set<Icon>();
+
     public DbSet<Feed> Feeds => Set<Feed>();
 
     public DbSet<Article> Articles => Set<Article>();
@@ -94,6 +100,29 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options)
             e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<Board>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.HasIndex(x => new { x.UserId, x.Name }).IsUnique();
+            e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BoardArticle>(e =>
+        {
+            e.HasKey(x => new { x.BoardId, x.ArticleId });
+            e.HasIndex(x => x.ArticleId);
+            e.HasOne(x => x.Board).WithMany(b => b.Articles).HasForeignKey(x => x.BoardId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Article>().WithMany().HasForeignKey(x => x.ArticleId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Icon>(e =>
+        {
+            e.Property(x => x.Hash).HasMaxLength(64);
+            e.HasIndex(x => x.Hash).IsUnique();
+            e.Property(x => x.MimeType).HasMaxLength(50);
+            e.Property(x => x.FileName).HasMaxLength(100);
+        });
+
         modelBuilder.Entity<AppSetting>(e =>
         {
             e.HasKey(x => x.Key);
@@ -115,6 +144,7 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options)
             e.Property(x => x.SelfUrl).HasMaxLength(2048);
             e.Property(x => x.WebSubSecret).HasMaxLength(200);
             e.HasIndex(x => x.NextFetchAt);
+            e.HasOne<Icon>().WithMany().HasForeignKey(x => x.IconId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<Article>(e =>
@@ -128,6 +158,7 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options)
             e.Property(x => x.Title).HasMaxLength(1000);
             e.Property(x => x.Author).HasMaxLength(500);
             e.Property(x => x.Snippet).HasMaxLength(500);
+            e.Property(x => x.SearchText).HasMaxLength(20000);
             e.Property(x => x.ThumbnailUrl).HasMaxLength(2048);
             e.Property(x => x.ContentHash).HasMaxLength(64);
             e.HasOne(x => x.Feed).WithMany().HasForeignKey(x => x.FeedId).OnDelete(DeleteBehavior.Cascade);
@@ -145,10 +176,18 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options)
         modelBuilder.Entity<UserArticle>(e =>
         {
             e.HasKey(x => new { x.UserId, x.ArticleId });
-            e.HasIndex(x => new { x.UserId, x.IsRead, x.FeedId });
+            // Unread counts (PLAN D1, D57): a partial index over unread rows only. With IsRead as a
+            // key column, SQLite judged the boolean unselective, picked another index and read every
+            // row: 300 ms at 200k articles. The filter must read exactly as EF writes !IsRead, or the
+            // planner won't use the index (SQLite matches the WHERE clause by form).
+            e.HasIndex(x => new { x.UserId, x.FeedId }, "IX_UserArticles_Unread").HasFilter("NOT \"IsRead\"");
+            // A second one in date order for unread-only pages; with only the first, SQLite read all
+            // unread rows and sorted them (100 ms) instead of walking by date (1 ms).
+            e.HasIndex(x => new { x.UserId, x.PublishedAt, x.ArticleId, x.FeedId }, "IX_UserArticles_UnreadByDate").HasFilter("NOT \"IsRead\"");
             e.HasIndex(x => new { x.UserId, x.FeedId, x.PublishedAt, x.ArticleId });
             e.HasIndex(x => new { x.UserId, x.PublishedAt, x.ArticleId });
-            e.HasIndex(x => new { x.UserId, x.IsSaved, x.SavedAt });
+            // Read Later: partial, for the same reason as the unread ones (a boolean key column is ignored).
+            e.HasIndex(x => new { x.UserId, x.PublishedAt, x.ArticleId }, "IX_UserArticles_Saved").HasFilter("\"IsSaved\"");
             e.HasIndex(x => x.ArticleId);
             e.HasOne(x => x.Article).WithMany().HasForeignKey(x => x.ArticleId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);

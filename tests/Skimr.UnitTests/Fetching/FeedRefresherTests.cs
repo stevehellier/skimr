@@ -50,7 +50,8 @@ public sealed class FeedRefresherTests : IDisposable
         var options = new FetchOptions();
         var ingester = new ArticleIngester(db, new ContentSanitizer(new ContentOptions()));
         var webSub = new WebSub(db, _http, ingester, options, _time, NullLogger<WebSub>.Instance);
-        var refresher = new FeedRefresher(db, _http, ingester, webSub, options, _time, NullLogger<FeedRefresher>.Instance);
+        var favicons = new Skimr.Infrastructure.Content.FaviconService(db, _http, new Skimr.Infrastructure.Content.StorageOptions(Path.GetTempPath()), _time);
+        var refresher = new FeedRefresher(db, _http, ingester, webSub, favicons, options, _time, NullLogger<FeedRefresher>.Instance);
         await refresher.RefreshAsync(_feedId, Ct);
     }
 

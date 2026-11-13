@@ -23,6 +23,7 @@ public sealed record SourceDetails(
     string? CustomTitle,
     int? RefreshMinutes,
     IReadOnlyList<long> FolderIds,
+    bool AlwaysFullText,
     DateTime? LastSuccessAt,
     DateTime? LastErrorAt,
     string? LastError,
@@ -59,7 +60,8 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
         }
     }
 
-    public async Task<LibraryResult> SubscribeAsync(Guid userId, string feedUrl, IReadOnlyCollection<long> folderIds, CancellationToken cancellationToken)
+    /// <param name="titleHint">A title to show until the first fetch fills in the real one (e.g. from OPML).</param>
+    public async Task<LibraryResult> SubscribeAsync(Guid userId, string feedUrl, IReadOnlyCollection<long> folderIds, CancellationToken cancellationToken, string? titleHint = null)
     {
         if (!Uri.TryCreate(feedUrl.Trim(), UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") || uri.AbsoluteUri.Length > 2048)
         {
@@ -68,7 +70,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
 
         var url = uri.AbsoluteUri;
         var now = time.GetUtcNow().UtcDateTime;
-        var feedId = await FindOrCreateFeedAsync(url, now, cancellationToken);
+        var feedId = await FindOrCreateFeedAsync(url, StoredText.Fit(titleHint?.Trim(), 500), now, cancellationToken);
 
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         var existing = await db.Subscriptions.Where(s => s.UserId == userId && s.FeedId == feedId).Select(s => (long?)s.Id).SingleOrDefaultAsync(cancellationToken);
@@ -107,7 +109,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
         return LibraryResult.Ok(subscription.Id);
     }
 
-    /// <summary>Drops the subscription and its unread history. Saved articles stay in Read Later (PLAN D41).</summary>
+    /// <summary>Drops the subscription and its history. Saved and boarded articles stay (PLAN D41).</summary>
     public async Task<LibraryResult> UnsubscribeAsync(Guid userId, long subscriptionId, CancellationToken cancellationToken)
     {
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
@@ -118,7 +120,10 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
         }
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        await db.UserArticles.Where(u => u.UserId == userId && u.FeedId == subscription.FeedId && !u.IsSaved).ExecuteDeleteAsync(cancellationToken);
+        await db.UserArticles
+            .Where(u => u.UserId == userId && u.FeedId == subscription.FeedId && !u.IsSaved
+                && !db.BoardArticles.Any(b => b.ArticleId == u.ArticleId && b.Board!.UserId == userId))
+            .ExecuteDeleteAsync(cancellationToken);
         db.Subscriptions.Remove(subscription);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -126,7 +131,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
     }
 
     public async Task<LibraryResult> UpdateSourceAsync(
-        Guid userId, long subscriptionId, string? customTitle, int? refreshMinutes, IReadOnlyCollection<long> folderIds, CancellationToken cancellationToken)
+        Guid userId, long subscriptionId, string? customTitle, int? refreshMinutes, IReadOnlyCollection<long> folderIds, CancellationToken cancellationToken, bool? alwaysFullText = null)
     {
         if (refreshMinutes is { } minutes && (minutes < FetchOptions.MinIntervalMinutes || minutes > 24 * 60))
         {
@@ -142,12 +147,32 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
 
         subscription.CustomTitle = StoredText.Fit(string.IsNullOrWhiteSpace(customTitle) ? null : customTitle.Trim(), 500);
         subscription.RefreshMinutes = refreshMinutes;
+        subscription.AlwaysFetchFullText = alwaysFullText ?? subscription.AlwaysFetchFullText;
 
         var wanted = folderIds.ToHashSet();
         subscription.Folders.RemoveAll(f => !wanted.Contains(f.FolderId));
         await AddToFoldersAsync(db, userId, subscription, wanted.Except(subscription.Folders.Select(f => f.FolderId)).ToList(), cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
+        return LibraryResult.Ok(subscriptionId);
+    }
+
+    /// <summary>Files an existing subscription into one more folder (both must be the user's).</summary>
+    public async Task<LibraryResult> AddToFolderAsync(Guid userId, long subscriptionId, long folderId, CancellationToken cancellationToken)
+    {
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        var subscription = await db.Subscriptions.Include(s => s.Folders).SingleOrDefaultAsync(s => s.Id == subscriptionId && s.UserId == userId, cancellationToken);
+        if (subscription is null)
+        {
+            return LibraryResult.Fail("Source not found.");
+        }
+
+        if (subscription.Folders.All(f => f.FolderId != folderId))
+        {
+            await AddToFoldersAsync(db, userId, subscription, [folderId], cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
         return LibraryResult.Ok(subscriptionId);
     }
 
@@ -181,6 +206,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
                 s.CustomTitle,
                 s.RefreshMinutes,
                 s.Folders.Select(f => f.FolderId).ToList(),
+                s.AlwaysFetchFullText,
                 s.Feed.LastSuccessAt,
                 s.Feed.LastErrorAt,
                 s.Feed.LastError,
@@ -313,7 +339,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
     /// Shared feed row for a URL. Two users adding a brand-new URL at once both try to insert;
     /// the unique index stops the second, which then uses the first one's row.
     /// </summary>
-    private async Task<long> FindOrCreateFeedAsync(string url, DateTime now, CancellationToken cancellationToken)
+    private async Task<long> FindOrCreateFeedAsync(string url, string? title, DateTime now, CancellationToken cancellationToken)
     {
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         var existing = await db.Feeds.Where(f => f.Url == url).Select(f => (long?)f.Id).SingleOrDefaultAsync(cancellationToken);
@@ -322,7 +348,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
             return existing.Value;
         }
 
-        var feed = new Feed { Url = url, CreatedAt = now, NextFetchAt = now };
+        var feed = new Feed { Url = url, Title = string.IsNullOrEmpty(title) ? null : title, CreatedAt = now, NextFetchAt = now };
         db.Feeds.Add(feed);
         try
         {

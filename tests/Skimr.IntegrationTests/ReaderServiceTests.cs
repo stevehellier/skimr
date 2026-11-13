@@ -150,7 +150,8 @@ public abstract class ReaderServiceTests(AppFixture fixture)
         nav.SavedCount.Should().Be(1);
 
         await DbAsync(db => db.Feeds.Where(f => f.Id == feedId).ExecuteUpdateAsync(s => s.SetProperty(f => f.NextFetchAt, DateTime.UtcNow.AddMinutes(-5)), Ct));
-        var due = await DbAsync(db => db.Feeds.Where(f => f.NextFetchAt <= DateTime.UtcNow && f.Subscriptions.Any()).Select(f => f.Id).ToListAsync(Ct));
+        var now = DateTime.UtcNow;
+        var due = await DbAsync(db => db.Feeds.Where(f => f.NextFetchAt <= now && f.Subscriptions.Any()).Select(f => f.Id).ToListAsync(Ct));
         due.Should().NotContain(feedId, "a feed nobody subscribes to isn't fetched");
     }
 

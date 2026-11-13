@@ -25,7 +25,18 @@ internal sealed class RevalidatingAuthenticationStateProvider(
 
     protected override async Task<bool> ValidateAuthenticationStateAsync(AuthenticationState state, CancellationToken cancellationToken)
     {
-        await using var scope = scopes.CreateAsyncScope();
+        AsyncServiceScope scope;
+        try
+        {
+            scope = scopes.CreateAsyncScope();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The app is shutting down; the circuit is about to end anyway.
+            return true;
+        }
+
+        await using var _ = scope;
         var users = scope.ServiceProvider.GetRequiredService<UserManager<SkimrUser>>();
         var user = await users.GetUserAsync(state.User);
         if (user is null || AccountService.IsDisabled(user))

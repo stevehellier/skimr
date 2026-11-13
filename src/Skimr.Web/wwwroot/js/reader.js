@@ -22,6 +22,17 @@ export function init(dotnetRef) {
     // An open dialog owns the keyboard (the browser closes it on Escape); don't also act on the page.
     if (document.querySelector("dialog[open]")) return;
 
+    // "/" focuses search here, without a round trip; preventDefault stops Firefox's find bar.
+    if (e.key === "/") {
+      const box = document.getElementById("search-box");
+      if (box) {
+        e.preventDefault();
+        box.focus();
+        box.select();
+      }
+      return;
+    }
+
     let key = e.key;
     if (key === "A" && e.shiftKey) key = "shift+a";
     else if (e.shiftKey && key !== "?") return;
@@ -47,6 +58,8 @@ export function init(dotnetRef) {
     }
   };
   document.addEventListener("keydown", keyHandler);
+  // Lets tests (and anything else) know shortcuts are live.
+  document.documentElement.dataset.readerReady = "";
 }
 
 /// Watches list items; anything scrolled up past the top of the viewport is reported as read.
@@ -122,6 +135,7 @@ export function getTheme() {
 
 export function dispose() {
   if (keyHandler) document.removeEventListener("keydown", keyHandler);
+  delete document.documentElement.dataset.readerReady;
   keyHandler = null;
   scrollObserver?.disconnect();
   endObserver?.disconnect();

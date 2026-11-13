@@ -19,6 +19,7 @@ internal sealed partial class FeedRefresher(
     IOutboundHttp http,
     ArticleIngester ingester,
     WebSub webSub,
+    Content.FaviconService favicons,
     FetchOptions options,
     TimeProvider time,
     ILogger<FeedRefresher> logger) : IFeedRefresher
@@ -78,6 +79,19 @@ internal sealed partial class FeedRefresher(
         }
 
         await db.SaveChangesAsync(cancellationToken);
+
+        // After the ingest is saved: a slow or broken favicon must never cost the feed its articles.
+        if (succeeded && Content.FaviconService.IsDue(feed, now))
+        {
+            try
+            {
+                await favicons.UpdateAsync(feed.Id, cancellationToken);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DbUpdateException)
+            {
+                LogFaviconFailed(feed.Id, ex.Message);
+            }
+        }
     }
 
     /// <summary>
@@ -122,6 +136,9 @@ internal sealed partial class FeedRefresher(
     }
 
     private static double Jitter() => Random.Shared.NextDouble() * 2 - 1;
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Favicon for feed {FeedId} not stored: {Error}")]
+    private partial void LogFaviconFailed(long feedId, string error);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Feed {FeedId} fetched: {Added} new items")]
     private partial void LogFetched(long feedId, int added);

@@ -6,6 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="@($"{HttpContext?.Request.PathBase}/")" />
     <ResourcePreloader />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#1d6b41" />
+    <link rel="icon" type="image/png" href="@Assets["app-icons/icon-192.png"]" />
+    <link rel="apple-touch-icon" href="@Assets["app-icons/icon-192.png"]" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["Skimr.styles.css"]" />
     <HeadOutlet />
@@ -15,6 +19,7 @@
     <Routes />
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script type="module" src="@Assets["js/pwa.js"]"></script>
 </body>
 
 </html>

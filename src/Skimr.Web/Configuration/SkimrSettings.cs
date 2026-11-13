@@ -2,6 +2,7 @@ using System.Net;
 using Skimr.Infrastructure.Content;
 using Skimr.Infrastructure.Fetching;
 using Skimr.Infrastructure.Identity;
+using Skimr.Infrastructure.Reading;
 
 namespace Skimr.Web.Configuration;
 
@@ -36,6 +37,8 @@ internal sealed class SkimrSettings
     public required FetchOptions Fetch { get; init; }
 
     public required ContentOptions Content { get; init; }
+
+    public required RetentionOptions Retention { get; init; }
 
     /// <summary>Used until an admin picks a mode in the setup wizard or admin page.</summary>
     public required RegistrationMode DefaultRegistrationMode { get; init; }
@@ -110,9 +113,17 @@ internal sealed class SkimrSettings
             host = v.ToLowerInvariant();
             return Uri.CheckHostName(v) == UriHostNameType.Dns;
         }, "a host name like www.youtube.com");
-        var content = config.GetSection("Content:AllowedEmbedHosts").Exists()
-            ? new ContentOptions { AllowedEmbedHosts = embedHosts }
-            : new ContentOptions();
+        var content = new ContentOptions
+        {
+            AllowedEmbedHosts = config.GetSection("Content:AllowedEmbedHosts").Exists() ? embedHosts : ContentOptions.DefaultEmbedHosts,
+            ImageProxyEnabled = read.Bool("ImageProxy:Enabled", true),
+        };
+
+        var retention = new RetentionOptions
+        {
+            Enabled = read.Bool("Retention:Enabled", true),
+            Days = read.Int("Retention:Days", 60, 7, 3650),
+        };
 
         var registrationText = config["Registration:DefaultMode"] ?? nameof(RegistrationMode.InviteOnly);
         if (!Enum.TryParse<RegistrationMode>(registrationText, ignoreCase: true, out var registration) || !Enum.IsDefined(registration))
@@ -144,6 +155,7 @@ internal sealed class SkimrSettings
             KnownNetworks = networks,
             Fetch = fetch,
             Content = content,
+            Retention = retention,
             DefaultRegistrationMode = registration,
             LoginAttemptsPerMinute = loginPerMinute,
             ApiRequestsPerMinute = apiPerMinute,

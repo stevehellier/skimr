@@ -162,6 +162,19 @@ public sealed class SkimrSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Retention_and_image_proxy_defaults_values_and_errors()
+    {
+        var defaults = Load();
+        (defaults.Retention.Enabled, defaults.Retention.Days, defaults.Content.ImageProxyEnabled).Should().Be((true, 60, true));
+
+        var custom = Load(("Retention:Enabled", "false"), ("Retention:Days", "30"), ("ImageProxy:Enabled", "false"));
+        (custom.Retention.Enabled, custom.Retention.Days, custom.Content.ImageProxyEnabled).Should().Be((false, 30, false));
+
+        var act = () => Load(("Retention:Days", "3"), ("Retention:Enabled", "maybe"), ("ImageProxy:Enabled", "on"));
+        act.Should().Throw<InvalidConfigurationException>().Which.Errors.Should().HaveCount(3);
+    }
+
+    [Fact]
     public void Unwritable_data_directory_fails()
     {
         // A file where the directory should be makes CreateDirectory fail on every OS.

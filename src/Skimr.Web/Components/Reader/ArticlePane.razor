@@ -10,11 +10,17 @@
         <button type="button" class="icon" aria-pressed="@(Article.IsRead ? "true" : "false")" @onclick="OnToggleRead" title="Toggle read (m)">
             @(Article.IsRead ? "Mark unread" : "Mark read")
         </button>
+        @if (Article.Url is not null && Article.FullTextHtml is null)
+        {
+            <button type="button" class="secondary" disabled="@FullTextLoading" @onclick="OnLoadFullText">@(FullTextLoading ? "Loading…" : "Load full article")</button>
+        }
         @if (Article.Url is not null)
         {
             <a class="button secondary" href="@Article.Url" target="_blank" rel="noopener noreferrer" title="View original (v)">View original ↗</a>
         }
     </div>
+
+    @ChildContent
 
     <article class="article-view">
         <header>
@@ -29,7 +35,11 @@
             </p>
         </header>
         @* Sanitised on ingest by ContentSanitizer; never render feed HTML that hasn't been. *@
-        <div class="article-body">@((MarkupString)Article.ContentHtml)</div>
+        @if (FullTextError is not null)
+        {
+            <p class="alert error" role="alert">@FullTextError</p>
+        }
+        <div class="article-body">@((MarkupString)(Article.FullTextHtml ?? Article.ContentHtml))</div>
     </article>
 </section>
 
@@ -45,4 +55,17 @@
 
     [Parameter]
     public EventCallback OnToggleRead { get; set; }
+
+    [Parameter]
+    public EventCallback OnLoadFullText { get; set; }
+
+    [Parameter]
+    public bool FullTextLoading { get; set; }
+
+    [Parameter]
+    public string? FullTextError { get; set; }
+
+    /// <summary>Extra controls shown above the article (the board picker).</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
 }

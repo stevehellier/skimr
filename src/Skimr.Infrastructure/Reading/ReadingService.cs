@@ -4,14 +4,28 @@ using Skimr.Infrastructure.Persistence;
 
 namespace Skimr.Infrastructure.Reading;
 
-public sealed record NavSource(long SubscriptionId, long FeedId, string Title, int Unread, bool HasError);
+public sealed record NavSource(long SubscriptionId, long FeedId, string Title, int Unread, bool HasError, long? IconId = null);
 
 public sealed record NavFolder(long Id, string Name, int Unread, IReadOnlyList<NavSource> Sources);
 
-public sealed record NavModel(int AllUnread, int TodayUnread, int SavedCount, IReadOnlyList<NavFolder> Folders, IReadOnlyList<NavSource> Unfiled)
+public sealed record NavBoard(long Id, string Name, int Count);
+
+public sealed record NavModel(int AllUnread, int TodayUnread, int SavedCount, IReadOnlyList<NavFolder> Folders, IReadOnlyList<NavSource> Unfiled, IReadOnlyList<NavBoard>? Boards = null)
 {
     public static readonly NavModel Empty = new(0, 0, 0, [], []);
+
+    public IReadOnlyList<NavBoard> BoardList => Boards ?? [];
 }
+
+public enum ReadFilter
+{
+    Any,
+    Unread,
+    Read,
+}
+
+/// <summary>Search text plus optional filters. Source and folder ids are checked against the user.</summary>
+public sealed record SearchQuery(string Text, long? SourceId = null, long? FolderId = null, DateTime? From = null, DateTime? To = null, ReadFilter Read = ReadFilter.Any);
 
 public sealed record ArticleCursor(DateTime PublishedAt, long ArticleId);
 
@@ -38,14 +52,16 @@ public sealed record ArticleDetail(
     DateTime PublishedAt,
     string ContentHtml,
     bool IsRead,
-    bool IsSaved);
+    bool IsSaved,
+    string? FullTextHtml = null,
+    bool AlwaysFullText = false);
 
 /// <summary>
 /// Everything the reader shows and changes. Every query and update is filtered by the signed-in
 /// user's id; ids from the browser are never trusted on their own. Each call uses its own
 /// DbContext, because an interactive circuit outlives any single operation.
 /// </summary>
-public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, TimeProvider time)
+public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, IArticleSearch search, TimeProvider time, SearchOptions? searchOptions = null)
 {
     public const int PageSize = 40;
 
@@ -61,6 +77,7 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, T
                 s.FeedId,
                 Title = s.CustomTitle ?? s.Feed!.Title ?? s.Feed.Url,
                 HasError = s.Feed!.ConsecutiveFailures > 0,
+                s.Feed.IconId,
                 s.SortOrder,
                 Folders = s.Folders.Select(f => new { f.FolderId, f.SortOrder }).ToList(),
             })
@@ -73,22 +90,39 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, T
             .Select(f => new { f.Id, f.Name })
             .ToListAsync(cancellationToken);
 
-        // One grouped, index-only count per source (PLAN D1); folders and totals are sums of these.
-        var unread = await SubscribedUnread(db, userId)
-            .GroupBy(u => u.FeedId)
-            .Select(g => new { FeedId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.FeedId, x => x.Count, cancellationToken);
+        // One grouped, index-only count per feed on (UserId, IsRead, FeedId) (PLAN D1). Feeds the
+        // user no longer subscribes to are dropped here in memory: a per-row subscription check in
+        // SQL made this 300 ms at 200k articles (results/phase5-perf).
+        var subscribedFeeds = subscriptions.Select(s => s.FeedId).ToHashSet();
+        var unread = (await db.UserArticles
+                .Where(u => u.UserId == userId && !u.IsRead)
+                .GroupBy(u => u.FeedId)
+                .Select(g => new { FeedId = g.Key, Count = g.Count() })
+                .ToListAsync(cancellationToken))
+            .Where(x => subscribedFeeds.Contains(x.FeedId))
+            .ToDictionary(x => x.FeedId, x => x.Count);
 
+        // Today: the last day's rows via (UserId, PublishedAt, ...), then the same in-memory filter.
         var since = time.GetUtcNow().UtcDateTime - ReaderView.TodayWindow;
-        var todayUnread = await SubscribedUnread(db, userId).CountAsync(u => u.PublishedAt >= since, cancellationToken);
+        // No GROUP BY here: it made SQLite prefer the (UserId, FeedId) index and read every unread row.
+        var todayUnread = (await db.UserArticles
+                .Where(u => u.UserId == userId && u.PublishedAt >= since && !u.IsRead)
+                .Select(u => u.FeedId)
+                .ToListAsync(cancellationToken))
+            .Count(subscribedFeeds.Contains);
         var saved = await db.UserArticles.CountAsync(u => u.UserId == userId && u.IsSaved, cancellationToken);
+        var boards = await db.Boards
+            .Where(b => b.UserId == userId)
+            .OrderBy(b => b.SortOrder).ThenBy(b => b.Name)
+            .Select(b => new NavBoard(b.Id, b.Name, b.Articles.Count))
+            .ToListAsync(cancellationToken);
 
         var navFolders = folders.Select(f =>
         {
             var sources = subscriptions
                 .Where(s => s.Folders.Any(x => x.FolderId == f.Id))
                 .OrderBy(s => s.Folders.First(x => x.FolderId == f.Id).SortOrder).ThenBy(s => s.Title, StringComparer.OrdinalIgnoreCase)
-                .Select(s => new NavSource(s.Id, s.FeedId, s.Title, unread.GetValueOrDefault(s.FeedId), s.HasError))
+                .Select(s => new NavSource(s.Id, s.FeedId, s.Title, unread.GetValueOrDefault(s.FeedId), s.HasError, s.IconId))
                 .ToList();
             return new NavFolder(f.Id, f.Name, sources.Sum(s => s.Unread), sources);
         }).ToList();
@@ -96,22 +130,75 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, T
         var unfiled = subscriptions
             .Where(s => s.Folders.Count == 0)
             .OrderBy(s => s.SortOrder).ThenBy(s => s.Title, StringComparer.OrdinalIgnoreCase)
-            .Select(s => new NavSource(s.Id, s.FeedId, s.Title, unread.GetValueOrDefault(s.FeedId), s.HasError))
+            .Select(s => new NavSource(s.Id, s.FeedId, s.Title, unread.GetValueOrDefault(s.FeedId), s.HasError, s.IconId))
             .ToList();
 
-        return new NavModel(unread.Values.Sum(), todayUnread, saved, navFolders, unfiled);
+        return new NavModel(unread.Values.Sum(), todayUnread, saved, navFolders, unfiled, boards);
     }
 
     public async Task<ArticlePage> GetArticlesAsync(
         Guid userId, ReaderView view, ArticleSort sort, bool unreadOnly, ArticleCursor? after, CancellationToken cancellationToken, int pageSize = PageSize)
     {
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
-        var query = InView(db, userId, view);
-        if (unreadOnly && view.Kind != ViewKind.Saved)
+        var query = await InViewAsync(db, userId, view, cancellationToken);
+        if (unreadOnly && view.Kind is not (ViewKind.Saved or ViewKind.Board))
         {
             query = query.Where(u => !u.IsRead);
         }
 
+        return await PageAsync(db, userId, query, sort, after, pageSize, cancellationToken);
+    }
+
+    /// <summary>
+    /// The user's articles matching the text (title and plain-text body) and filters, newest
+    /// first. Covers everything the user still holds, including Read Later from dropped sources.
+    /// </summary>
+    public async Task<ArticlePage> SearchAsync(Guid userId, SearchQuery query, ArticleCursor? after, CancellationToken cancellationToken, int pageSize = PageSize)
+    {
+        if (string.IsNullOrWhiteSpace(query.Text))
+        {
+            return new ArticlePage([], null);
+        }
+
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        var filtered = query.SourceId is not null || query.FolderId is not null || query.From is not null || query.To is not null || query.Read != ReadFilter.Any;
+        var matching = search.MatchingArticleIds(db, query.Text.Trim(), filtered ? null : (searchOptions ?? SearchOptions.Default).CandidateLimit);
+        var rows = db.UserArticles.Where(u => u.UserId == userId && matching.Contains(u.ArticleId));
+
+        if (query.SourceId is { } sourceId)
+        {
+            rows = rows.Where(u => db.Subscriptions.Any(s => s.Id == sourceId && s.UserId == userId && s.FeedId == u.FeedId));
+        }
+
+        if (query.FolderId is { } folderId)
+        {
+            rows = rows.Where(u => db.SubscriptionFolders.Any(sf =>
+                sf.FolderId == folderId && sf.Folder!.UserId == userId && sf.Subscription!.UserId == userId && sf.Subscription.FeedId == u.FeedId));
+        }
+
+        if (query.From is { } from)
+        {
+            rows = rows.Where(u => u.PublishedAt >= from);
+        }
+
+        if (query.To is { } to)
+        {
+            rows = rows.Where(u => u.PublishedAt < to);
+        }
+
+        rows = query.Read switch
+        {
+            ReadFilter.Unread => rows.Where(u => !u.IsRead),
+            ReadFilter.Read => rows.Where(u => u.IsRead),
+            _ => rows,
+        };
+
+        return await PageAsync(db, userId, rows, ArticleSort.Newest, after, pageSize, cancellationToken);
+    }
+
+    private static async Task<ArticlePage> PageAsync(
+        SkimrDbContext db, Guid userId, IQueryable<UserArticle> query, ArticleSort sort, ArticleCursor? after, int pageSize, CancellationToken cancellationToken)
+    {
         if (after is not null)
         {
             query = sort == ArticleSort.Newest
@@ -160,7 +247,9 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, T
                 u.PublishedAt,
                 u.Article.ContentHtml ?? "",
                 u.IsRead,
-                u.IsSaved))
+                u.IsSaved,
+                u.Article.FullTextHtml,
+                db.Subscriptions.Any(s => s.UserId == userId && s.FeedId == u.FeedId && s.AlwaysFetchFullText)))
             .AsNoTracking()
             .SingleOrDefaultAsync(cancellationToken);
     }
@@ -193,7 +282,7 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, T
     {
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         var now = time.GetUtcNow().UtcDateTime;
-        var query = InView(db, userId, view).Where(u => !u.IsRead);
+        var query = (await InViewAsync(db, userId, view, cancellationToken)).Where(u => !u.IsRead);
         if (olderThan is { } age)
         {
             var cutoff = now - age;
@@ -277,12 +366,12 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, T
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>Unread articles from sources the user still subscribes to. Saved articles from dropped sources don't count.</summary>
-    private static IQueryable<UserArticle> SubscribedUnread(SkimrDbContext db, Guid userId) =>
-        db.UserArticles.Where(u => u.UserId == userId && !u.IsRead
-            && db.Subscriptions.Any(s => s.UserId == userId && s.FeedId == u.FeedId));
-
-    private IQueryable<UserArticle> InView(SkimrDbContext db, Guid userId, ReaderView view)
+    /// <summary>
+    /// The user's rows in a view. Source and folder views resolve the user's own feed ids first
+    /// and filter on them directly, so the (UserId, FeedId, PublishedAt) index is used; a
+    /// per-row subscription check took 450 ms for one source at 200k articles (results/phase5-perf).
+    /// </summary>
+    private async Task<IQueryable<UserArticle>> InViewAsync(SkimrDbContext db, Guid userId, ReaderView view, CancellationToken cancellationToken)
     {
         var mine = db.UserArticles.Where(u => u.UserId == userId);
         switch (view.Kind)
@@ -291,10 +380,22 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, T
                 // Read Later keeps articles even after their source is dropped (PLAN D41).
                 return mine.Where(u => u.IsSaved);
             case ViewKind.Source:
-                return mine.Where(u => db.Subscriptions.Any(s => s.Id == view.Id && s.UserId == userId && s.FeedId == u.FeedId));
+                var feedId = await db.Subscriptions
+                    .Where(s => s.Id == view.Id && s.UserId == userId)
+                    .Select(s => (long?)s.FeedId)
+                    .SingleOrDefaultAsync(cancellationToken);
+                return feedId is { } id ? mine.Where(u => u.FeedId == id) : mine.Where(_ => false);
             case ViewKind.Folder:
-                return mine.Where(u => db.SubscriptionFolders.Any(sf =>
-                    sf.FolderId == view.Id && sf.Folder!.UserId == userId && sf.Subscription!.UserId == userId && sf.Subscription.FeedId == u.FeedId));
+                var feedIds = await db.SubscriptionFolders
+                    .Where(sf => sf.FolderId == view.Id && sf.Folder!.UserId == userId && sf.Subscription!.UserId == userId)
+                    .Select(sf => sf.Subscription!.FeedId)
+                    .ToListAsync(cancellationToken);
+                return mine.Where(u => feedIds.Contains(u.FeedId));
+            case ViewKind.Board:
+                // Boards keep articles even after their source is dropped, like Read Later.
+                return mine.Where(u => db.BoardArticles.Any(b => b.BoardId == view.Id && b.Board!.UserId == userId && b.ArticleId == u.ArticleId));
+            case ViewKind.Search:
+                return mine.Where(_ => false);
         }
 
         var subscribed = mine.Where(u => db.Subscriptions.Any(s => s.UserId == userId && s.FeedId == u.FeedId));

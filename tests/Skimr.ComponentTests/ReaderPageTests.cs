@@ -37,8 +37,15 @@ public sealed class ReaderPageTests : BunitContext
         Services.AddSingleton<FeedDiscovery>();
         Services.AddSingleton<FeedScheduler>();
         Services.AddSingleton(typeof(Microsoft.Extensions.Logging.ILogger<>), typeof(NullLogger<>));
+        Services.AddSingleton<IArticleSearch>(new Skimr.Infrastructure.Sqlite.SqliteArticleSearch());
         Services.AddScoped<ReadingService>();
         Services.AddScoped<LibraryService>();
+        Services.AddScoped<BoardService>();
+        Services.AddSingleton(new Skimr.Infrastructure.Content.ContentOptions());
+        Services.AddSingleton<Skimr.Infrastructure.Content.ContentSanitizer>();
+        Services.AddScoped<FullTextService>();
+        Services.AddSingleton(new Skimr.Infrastructure.Content.ImageProxyKey(new byte[32]));
+        Services.AddSingleton<Skimr.Infrastructure.Content.ImageProxy>();
 
         _auth = AddAuthorization();
         _auth.SetAuthorized("alice").SetClaims(new Claim(ClaimTypes.NameIdentifier, _userId.ToString()));

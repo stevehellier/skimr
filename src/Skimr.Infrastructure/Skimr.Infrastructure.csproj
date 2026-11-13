@@ -9,6 +9,7 @@
     <PackageReference Include="System.ServiceModel.Syndication" />
     <PackageReference Include="HtmlSanitizer" />
     <PackageReference Include="AngleSharp" />
+    <PackageReference Include="SmartReader" />
   </ItemGroup>
   <ItemGroup>
     <!-- Skimr is the Web project's assembly name. -->
@@ -17,5 +18,6 @@
     <InternalsVisibleTo Include="Skimr.IntegrationTests" />
     <InternalsVisibleTo Include="Skimr.ComponentTests" />
     <InternalsVisibleTo Include="Skimr.E2ETests" />
+    <InternalsVisibleTo Include="Skimr.Perf" />
   </ItemGroup>
 </Project>

@@ -92,6 +92,7 @@ internal static class AuthServices
         services.AddRateLimiter(o =>
         {
             o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            Hosting.ReaderEndpoints.AddImageRateLimit(o);
             // Only form submissions count, so viewing the login page is never limited.
             o.AddPolicy(Policies.LoginRateLimit, context => HttpMethods.IsPost(context.Request.Method)
                 ? RateLimitPartition.GetFixedWindowLimiter(ClientKey(context), _ => new FixedWindowRateLimiterOptions

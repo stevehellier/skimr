@@ -15,6 +15,9 @@ internal sealed class ArticleIngester(SkimrDbContext db, ContentSanitizer saniti
 {
     private const int MaxItemsPerFetch = 500;
 
+    /// <summary>Plain text kept per article for search; enough for any normal post.</summary>
+    public const int SearchTextLimit = 20_000;
+
     public async Task<int> IngestAsync(Feed feed, ParsedFeed parsed, Uri documentUri, DateTime now, CancellationToken cancellationToken)
     {
         var candidates = parsed.Items
@@ -102,6 +105,7 @@ internal sealed class ArticleIngester(SkimrDbContext db, ContentSanitizer saniti
         article.Author = StoredText.Fit(item.Author, 500);
         article.ContentHtml = StoredText.Fit(content.Html, int.MaxValue);
         article.Snippet = StoredText.Fit(content.Snippet, 500);
+        article.SearchText = StoredText.Fit(HtmlText.ToPlainText(content.Html), SearchTextLimit);
         article.ThumbnailUrl = new[] { item.ThumbnailUrl, content.FirstImageUrl }.FirstOrDefault(u => u is { Length: <= 2048 });
         article.ContentHash = contentHash;
     }

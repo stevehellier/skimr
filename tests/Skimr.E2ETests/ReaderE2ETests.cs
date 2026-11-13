@@ -41,7 +41,8 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
             app.MapGet("/site", (HttpContext ctx) => Results.Content(
                 $"""<html><head><title>Local site</title><link rel="alternate" type="application/rss+xml" href="/feed.xml"></head><body>Hi</body></html>""",
                 "text/html"));
-            app.MapGet("/feed.xml", () => Results.Text(Rss(), "application/rss+xml"));
+            app.MapGet("/feed.xml", () => Results.Text(Rss(imageUrl: _feeds.Url("pic.png").AbsoluteUri), "application/rss+xml"));
+            app.MapGet("/pic.png", () => Results.Bytes(Convert.FromBase64String(OnePixelPng), "image/png"));
             app.MapGet("/big.xml", () => Results.Text(Rss(60, "Big"), "application/rss+xml"));
         });
 
@@ -50,6 +51,7 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
             ["Database:Provider"] = "Sqlite",
             ["Storage:DataDirectory"] = _dataDirectory,
             ["Fetch:Enabled"] = "true",
+            ["Retention:Enabled"] = "false",
             // The feed server is on loopback; a home-lab user would set this too.
             ["Fetch:AllowPrivateNetworkFeeds"] = "true",
             ["Security:LoginAttemptsPerMinute"] = "1000",
@@ -80,11 +82,13 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         }
     }
 
-    private static string Rss(int count = 3, string name = "Local") =>
+    private const string OnePixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+    private static string Rss(int count = 3, string name = "Local", string? imageUrl = null) =>
         $"<rss version=\"2.0\"><channel><title>{name} Feed</title><link>http://127.0.0.1/</link>" +
         string.Concat(Enumerable.Range(1, count).Select(i =>
             $"<item><title>{name} story {i}</title><guid>{name}{i}</guid><link>https://example.com/{i}</link>" +
-            $"<pubDate>{DateTime.UtcNow.AddHours(-i):R}</pubDate><description>&lt;p&gt;Body {i}&lt;/p&gt;</description></item>")) +
+            $"<pubDate>{DateTime.UtcNow.AddHours(-i):R}</pubDate><description>&lt;p&gt;Body {i}&lt;/p&gt;{(i == 1 && imageUrl is not null ? $"&lt;img src=\"{imageUrl}\" alt=\"pixel\"&gt;" : "")}</description></item>")) +
         "</channel></rss>";
 
     private async Task<IPage> NewPageAsync(BrowserNewContextOptions? options = null)
@@ -105,6 +109,10 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
 
     private static Task ShotAsync(IPage page, string name) =>
         page.ScreenshotAsync(new PageScreenshotOptions { Path = Path.Combine(ScreenshotDirectory, name + ".png"), FullPage = false });
+
+    /// <summary>Keys pressed before reader.js is listening are lost; it sets this marker once it is.</summary>
+    private static Task ReaderReadyAsync(IPage page) =>
+        Assertions.Expect(page.Locator("html[data-reader-ready]")).ToHaveCountAsync(1);
 
     private static Task<string?> ActiveElementIdAsync(IPage page) => page.EvaluateAsync<string?>("() => document.activeElement?.id ?? null");
 
@@ -154,9 +162,15 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         await ShotAsync(page, "desktop-list");
 
         // ---- Keyboard ----------------------------------------------------------------------
+        await ReaderReadyAsync(page);
         await page.Locator("body").PressAsync("j");
         await Assertions.Expect(page.Locator(".article-pane h2")).ToHaveTextAsync("Local story 1");
         (await ActiveElementIdAsync(page)).Should().Be("pane-title", "opening an article moves focus to it");
+
+        // The feed's http:// image loads through the proxy (same origin, so the CSP allows it).
+        var pixel = page.Locator(".article-body img");
+        (await pixel.GetAttributeAsync("src")).Should().StartWith("img/");
+        await Assertions.Expect(pixel).ToHaveJSPropertyAsync("naturalWidth", 1);
         await Assertions.Expect(page.Locator("a.nav-link[href=''] .count .n")).ToHaveTextAsync("2", new() { Timeout = 5_000 });
         await ShotAsync(page, "desktop-reading");
 
@@ -185,10 +199,41 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         await Assertions.Expect(page).ToHaveURLAsync(new Regex("/saved$"));
         await Assertions.Expect(page.Locator(".article-item")).ToHaveCountAsync(1);
 
+        // ---- Search ------------------------------------------------------------------------
+        await page.Locator("body").PressAsync("/");
+        (await ActiveElementIdAsync(page)).Should().Be("search-box", "/ focuses search");
+        await page.Keyboard.TypeAsync("story 2");
+        await page.Keyboard.PressAsync("Enter");
+        await Assertions.Expect(page).ToHaveURLAsync(new Regex("/search\\?q=story%202$"));
+        await Assertions.Expect(page.Locator(".article-item .title")).ToHaveTextAsync(["Local story 2"]);
+
+        await page.FillAsync("#search-box", "story 3");
+        await page.PressAsync("#search-box", "Enter");
+        await Assertions.Expect(page.Locator(".article-item .title")).ToHaveTextAsync(["Local story 3"]);
+
+        await page.FillAsync("#search-box", "\"NEAR( -AND");
+        await page.PressAsync("#search-box", "Enter");
+        await Assertions.Expect(page.Locator(".empty")).ToContainTextAsync("No articles match");
+
+        // ---- Boards ------------------------------------------------------------------------
+        await page.FillAsync("#search-box", "story 3");
+        await page.PressAsync("#search-box", "Enter");
+        await page.ClickAsync("button.open");
+        await page.ClickAsync(".board-picker summary");
+        await page.FillAsync("#new-board", "Keepers");
+        await page.ClickAsync(".board-picker button[type=submit]");
+        await Assertions.Expect(page.Locator(".board-picker input[type=checkbox]")).ToBeCheckedAsync();
+        await Assertions.Expect(page.Locator("a.nav-link", new() { HasText = "Keepers" })).ToBeVisibleAsync();
+        await page.ClickAsync("a.nav-link >> text=Keepers");
+        await Assertions.Expect(page).ToHaveURLAsync(new Regex("/board/\\d+$"));
+        await Assertions.Expect(page.Locator(".article-item .title")).ToHaveTextAsync(["Local story 3"]);
+        await ShotAsync(page, "desktop-board");
+
         // ---- Mark all read ---------------------------------------------------------------
         await page.GotoAsync(_baseUrl);
-        // Unread only: story 2 was read on the way past with j/k.
-        await Assertions.Expect(page.Locator(".article-item")).ToHaveCountAsync(2);
+        // Unread only: story 2 was read on the way past with j/k, story 3 when opened from search.
+        await Assertions.Expect(page.Locator(".article-item")).ToHaveCountAsync(1);
+        await ReaderReadyAsync(page);
         await page.Locator("body").PressAsync("Shift+A");
         await Assertions.Expect(page.Locator("#mark-all-dialog")).ToBeVisibleAsync();
         await page.ClickAsync("#mark-all-dialog >> text=Everything");
@@ -203,6 +248,21 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         await page.GotoAsync(_baseUrl + "saved");
         await Assertions.Expect(page.Locator(".article-item")).ToHaveCountAsync(1);
         await ShotAsync(page, "desktop-dark");
+
+        // ---- PWA ---------------------------------------------------------------------------
+        var swScope = await page.EvaluateAsync<string>("() => navigator.serviceWorker.ready.then(r => r.scope)");
+        swScope.Should().Be(_baseUrl);
+        var manifest = await page.APIRequest.GetAsync(_baseUrl + "manifest.webmanifest");
+        manifest.Status.Should().Be(200);
+        manifest.Headers["content-type"].Should().Contain("manifest+json");
+        (await manifest.TextAsync()).Should().Contain("\"start_url\": \"./\"");
+        await page.ReloadAsync();
+        await Assertions.Expect(page.Locator(".article-item")).ToHaveCountAsync(1);
+        var cached = await page.EvaluateAsync<string[]>("() => caches.keys().then(ks => Promise.all(ks.map(k => caches.open(k).then(c => c.keys())))).then(all => all.flat().map(r => r.url))");
+        cached.Should().Contain(u => u.EndsWith("offline.html", StringComparison.Ordinal));
+        cached.Where(u => !u.EndsWith("offline.html", StringComparison.Ordinal)).Should().OnlyContain(
+            u => Regex.IsMatch(u, @"\.[a-z0-9]{8,}\.(css|js|png|svg|woff2?)$", RegexOptions.IgnoreCase),
+            "only fingerprinted static files are cached: never pages, API, proxied images or icons");
 
         // ---- Phone width -------------------------------------------------------------------
         var state = await page.Context.StorageStateAsync();
@@ -270,9 +330,9 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         return result.UserId!.Value;
     }
 
-    private async Task<IPage> SignInAsync(string userName)
+    private async Task<IPage> SignInAsync(string userName, BrowserNewContextOptions? options = null)
     {
-        var page = await NewPageAsync();
+        var page = await NewPageAsync(options);
         await page.GotoAsync(_baseUrl + "login");
         await page.FillAsync("#username", userName);
         await page.FillAsync("#password", Password);
@@ -326,8 +386,18 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         var adminId = await CreateUserAsync("boss", isAdmin: true);
         var userId = await CreateUserAsync("leaver", isAdmin: false);
         await SubscribeAsync(userId, "feed.xml");
-        var page = await SignInAsync("leaver");
+        // Service workers off: Playwright can't intercept requests a service worker makes, and this
+        // test needs to see (and block) the redirect to sign-in.
+        var page = await SignInAsync("leaver", new BrowserNewContextOptions { ServiceWorkers = ServiceWorkerPolicy.Block });
         await Assertions.Expect(page.Locator(".article-item")).ToHaveCountAsync(3, new() { Timeout = 20_000 });
+
+        // Listen for the redirect before disabling: revalidation (every second here) can beat the test.
+        var redirected = new TaskCompletionSource();
+        await page.RouteAsync("**/login**", async route =>
+        {
+            redirected.TrySetResult();
+            await route.AbortAsync();
+        });
 
         await using (var scope = _app.Services.CreateAsyncScope())
         {
@@ -338,12 +408,6 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         // and the page can't act as the user any more. SignedOutCircuitGuardTests proves the
         // server drops a modified client's events even if it ignores the redirect.
         // The guard closes, then asks the browser to go to /login; wait for that attempt rather than a fixed time.
-        var redirected = new TaskCompletionSource();
-        await page.RouteAsync("**/login**", async route =>
-        {
-            redirected.TrySetResult();
-            await route.AbortAsync();
-        });
         await redirected.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
         await page.Locator("body").PressAsync("j");
         await page.WaitForTimeoutAsync(1_000);

@@ -5,7 +5,8 @@ using System.Text.RegularExpressions;
 
 namespace Skimr.Infrastructure.Fetching;
 
-internal sealed record FetchRequest(Uri Uri, string Accept, string? ETag = null, string? LastModified = null);
+/// <param name="Timeout">Overrides Fetch:TimeoutSeconds for this request (favicons use a short one).</param>
+internal sealed record FetchRequest(Uri Uri, string Accept, string? ETag = null, string? LastModified = null, TimeSpan? Timeout = null);
 
 internal sealed record FetchResponse(
     HttpStatusCode Status,
@@ -17,7 +18,8 @@ internal sealed record FetchResponse(
     TimeSpan? MaxAge,
     TimeSpan? RetryAfter,
     string? HubUrl,
-    string? SelfUrl)
+    string? SelfUrl,
+    string? Charset = null)
 {
     public bool IsSuccess => (int)Status is >= 200 and < 300;
 }
@@ -51,13 +53,13 @@ internal sealed partial class OutboundHttp(IHttpClientFactory clientFactory, Fet
             message.Headers.TryAddWithoutValidation("If-Modified-Since", request.LastModified);
         }
 
-        return SendAsync(message, cancellationToken);
+        return SendAsync(message, cancellationToken, request.Timeout);
     }
 
     public Task<FetchResponse> PostFormAsync(Uri uri, IReadOnlyDictionary<string, string> form, CancellationToken cancellationToken) =>
         SendAsync(new HttpRequestMessage(HttpMethod.Post, uri) { Content = new FormUrlEncodedContent(form) }, cancellationToken);
 
-    private async Task<FetchResponse> SendAsync(HttpRequestMessage message, CancellationToken cancellationToken)
+    private async Task<FetchResponse> SendAsync(HttpRequestMessage message, CancellationToken cancellationToken, TimeSpan? timeoutOverride = null)
     {
         using var _ = message;
         if (message.RequestUri is not { IsAbsoluteUri: true, Scheme: "http" or "https" } uri)
@@ -66,7 +68,8 @@ internal sealed partial class OutboundHttp(IHttpClientFactory clientFactory, Fet
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(options.Timeout);
+        var limit = timeoutOverride ?? options.Timeout;
+        timeout.CancelAfter(limit);
 
         try
         {
@@ -93,11 +96,12 @@ internal sealed partial class OutboundHttp(IHttpClientFactory clientFactory, Fet
                 MaxAge: response.Headers.CacheControl?.MaxAge,
                 RetryAfter: RetryAfter(response.Headers.RetryAfter),
                 HubUrl: LinkRel(links, "hub"),
-                SelfUrl: LinkRel(links, "self"));
+                SelfUrl: LinkRel(links, "self"),
+                Charset: response.Content.Headers.ContentType?.CharSet?.Trim('"'));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new FetchException($"Timed out after {options.Timeout.TotalSeconds:0} s.");
+            throw new FetchException($"Timed out after {limit.TotalSeconds:0} s.");
         }
         catch (HttpRequestException ex)
         {

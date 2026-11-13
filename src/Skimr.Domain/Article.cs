@@ -28,6 +28,12 @@ public sealed class Article
     /// <summary>Plain-text excerpt of the content for list views.</summary>
     public string? Snippet { get; set; }
 
+    /// <summary>
+    /// Plain text of the content (no tags), capped, for the search index. Indexing HTML would
+    /// let searches match tag and attribute names.
+    /// </summary>
+    public string? SearchText { get; set; }
+
     public string? ThumbnailUrl { get; set; }
 
     public DateTime PublishedAt { get; set; }

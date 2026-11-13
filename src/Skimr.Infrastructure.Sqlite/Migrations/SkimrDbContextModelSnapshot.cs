@@ -247,6 +247,10 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                     b.Property<DateTime>("PublishedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SearchText")
+                        .HasMaxLength(20000)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Snippet")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
@@ -279,6 +283,49 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                     b.ToTable("Articles");
                 });
 
+            modelBuilder.Entity("Skimr.Domain.Board", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("Boards");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.BoardArticle", b =>
+                {
+                    b.Property<long>("BoardId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("ArticleId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("AddedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("BoardId", "ArticleId");
+
+                    b.HasIndex("ArticleId");
+
+                    b.ToTable("BoardArticles");
+                });
+
             modelBuilder.Entity("Skimr.Domain.Feed", b =>
                 {
                     b.Property<long>("Id")
@@ -302,6 +349,12 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                     b.Property<string>("HubUrl")
                         .HasMaxLength(2048)
                         .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("IconCheckedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("IconId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("LastError")
                         .HasMaxLength(1000)
@@ -349,6 +402,8 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("IconId");
+
                     b.HasIndex("NextFetchAt");
 
                     b.HasIndex("Url")
@@ -380,6 +435,38 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                         .IsUnique();
 
                     b.ToTable("Folders");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.Icon", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Hash")
+                        .IsUnique();
+
+                    b.ToTable("Icons");
                 });
 
             modelBuilder.Entity("Skimr.Domain.Invite", b =>
@@ -510,13 +597,18 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
 
                     b.HasIndex("ArticleId");
 
-                    b.HasIndex("UserId", "IsRead", "FeedId");
-
-                    b.HasIndex("UserId", "IsSaved", "SavedAt");
-
                     b.HasIndex("UserId", "PublishedAt", "ArticleId");
 
                     b.HasIndex("UserId", "FeedId", "PublishedAt", "ArticleId");
+
+                    b.HasIndex(new[] { "UserId", "PublishedAt", "ArticleId" }, "IX_UserArticles_Saved")
+                        .HasFilter("\"IsSaved\"");
+
+                    b.HasIndex(new[] { "UserId", "FeedId" }, "IX_UserArticles_Unread")
+                        .HasFilter("NOT \"IsRead\"");
+
+                    b.HasIndex(new[] { "UserId", "PublishedAt", "ArticleId", "FeedId" }, "IX_UserArticles_UnreadByDate")
+                        .HasFilter("NOT \"IsRead\"");
 
                     b.ToTable("UserArticles");
                 });
@@ -702,6 +794,40 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                     b.Navigation("Feed");
                 });
 
+            modelBuilder.Entity("Skimr.Domain.Board", b =>
+                {
+                    b.HasOne("Skimr.Infrastructure.Identity.SkimrUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Skimr.Domain.BoardArticle", b =>
+                {
+                    b.HasOne("Skimr.Domain.Article", null)
+                        .WithMany()
+                        .HasForeignKey("ArticleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Skimr.Domain.Board", "Board")
+                        .WithMany("Articles")
+                        .HasForeignKey("BoardId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Board");
+                });
+
+            modelBuilder.Entity("Skimr.Domain.Feed", b =>
+                {
+                    b.HasOne("Skimr.Domain.Icon", null)
+                        .WithMany()
+                        .HasForeignKey("IconId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
             modelBuilder.Entity("Skimr.Domain.Folder", b =>
                 {
                     b.HasOne("Skimr.Infrastructure.Identity.SkimrUser", null)
@@ -793,6 +919,11 @@ namespace Skimr.Infrastructure.Sqlite.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Skimr.Domain.Board", b =>
+                {
+                    b.Navigation("Articles");
                 });
 
             modelBuilder.Entity("Skimr.Domain.Feed", b =>
