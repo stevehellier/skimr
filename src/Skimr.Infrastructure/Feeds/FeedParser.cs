@@ -19,6 +19,19 @@ internal static class FeedParser
     /// <param name="feedUri">Where the document came from; the last resort for resolving relative URLs.</param>
     public static ParsedFeed Parse(byte[] body, Uri feedUri)
     {
+        // Feed bytes are untrusted: whatever a library throws on them, report it as a parse failure.
+        try
+        {
+            return ParseCore(body, feedUri);
+        }
+        catch (Exception ex) when (ex is not FeedParseException and not OperationCanceledException)
+        {
+            throw new FeedParseException($"Could not read feed: {ex.Message}", ex);
+        }
+    }
+
+    private static ParsedFeed ParseCore(byte[] body, Uri feedUri)
+    {
         if (LooksLikeJson(body))
         {
             return JsonFeedReader.Read(body, feedUri);
@@ -76,18 +89,13 @@ internal static class FeedParser
             return true;
         };
 
-        SyndicationFeed feed;
-        try
+        using (var reader = document.CreateReader())
         {
-            using var reader = document.CreateReader();
             reader.MoveToContent();
             formatter.ReadFrom(reader);
-            feed = formatter.Feed;
         }
-        catch (Exception ex) when (ex is XmlException or FormatException or NotSupportedException or ArgumentException)
-        {
-            throw new FeedParseException($"Could not read feed: {ex.Message}", ex);
-        }
+
+        var feed = formatter.Feed;
 
         var feedBase = Combine(feedUri, feed.BaseUri);
         var siteUrl = UrlResolver.Resolve(Link(feed.Links, "alternate")?.OriginalString, feedBase);

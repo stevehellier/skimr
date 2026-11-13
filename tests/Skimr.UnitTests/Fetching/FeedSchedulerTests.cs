@@ -113,7 +113,10 @@ public sealed class FeedSchedulerTests : IDisposable
         await Task.Delay(200, Ct);
 
         using var db = _db.Create();
-        db.Feeds.Single(f => f.Id == id).NextFetchAt.Should().Be(_time.UtcNow.AddMinutes(30));
+        var feed = db.Feeds.Single(f => f.Id == id);
+        feed.NextFetchAt.Should().Be(_time.UtcNow.AddMinutes(30));
+        feed.LastError.Should().Be("Internal error: database exploded");
+        feed.ConsecutiveFailures.Should().Be(1);
         await cts.CancelAsync();
         await workers;
     }

@@ -60,8 +60,8 @@ internal sealed partial class FeedRefresher(
                 var parsed = FeedParser.Parse(response.Body, response.FinalUri);
                 UpdateMetadata(feed, parsed, response);
                 var added = await ingester.IngestAsync(feed, parsed, response.FinalUri, now, cancellationToken);
-                feed.ETag = ArticleIngester.Limit(response.ETag, 500);
-                feed.LastModified = ArticleIngester.Limit(response.LastModified, 100);
+                feed.ETag = StoredText.Fit(response.ETag, 500);
+                feed.LastModified = StoredText.Fit(response.LastModified, 100);
                 RecordSuccess(feed, now, interval, response);
                 LogFetched(feed.Id, added);
                 succeeded = true;
@@ -98,11 +98,11 @@ internal sealed partial class FeedRefresher(
 
     private static void UpdateMetadata(Feed feed, ParsedFeed parsed, FetchResponse response)
     {
-        feed.Title = ArticleIngester.Limit(parsed.Title, 500) ?? feed.Title;
-        feed.SiteUrl = ArticleIngester.Limit(parsed.SiteUrl, 2048) ?? feed.SiteUrl;
-        feed.Description = ArticleIngester.Limit(parsed.Description, 2000) ?? feed.Description;
-        feed.HubUrl = ArticleIngester.Limit(response.HubUrl ?? parsed.HubUrl, 2048);
-        feed.SelfUrl = ArticleIngester.Limit(response.SelfUrl ?? parsed.SelfUrl, 2048);
+        feed.Title = StoredText.Fit(parsed.Title, 500) ?? feed.Title;
+        feed.SiteUrl = StoredText.Fit(parsed.SiteUrl, 2048) ?? feed.SiteUrl;
+        feed.Description = StoredText.Fit(parsed.Description, 2000) ?? feed.Description;
+        feed.HubUrl = StoredText.Fit(response.HubUrl ?? parsed.HubUrl, 2048);
+        feed.SelfUrl = StoredText.Fit(response.SelfUrl ?? parsed.SelfUrl, 2048);
     }
 
     private static void RecordSuccess(Feed feed, DateTime now, TimeSpan interval, FetchResponse response)
@@ -115,7 +115,7 @@ internal sealed partial class FeedRefresher(
     private void RecordFailure(Feed feed, DateTime now, TimeSpan interval, string error, TimeSpan? retryAfter)
     {
         feed.LastErrorAt = now;
-        feed.LastError = ArticleIngester.Limit(error, 1000);
+        feed.LastError = StoredText.Fit(error, 1000);
         feed.ConsecutiveFailures++;
         feed.NextFetchAt = RefreshSchedule.Next(now, interval, feed.ConsecutiveFailures, null, retryAfter, Jitter());
         LogFailed(feed.Id, feed.ConsecutiveFailures, error);

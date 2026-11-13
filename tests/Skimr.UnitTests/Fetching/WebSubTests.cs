@@ -50,6 +50,19 @@ public sealed class WebSubTests : IDisposable
     }
 
     [Fact]
+    public async Task Never_sends_the_secret_to_a_plain_http_hub()
+    {
+        await using var db = _db.Create();
+        var feed = NewFeed();
+        feed.HubUrl = "http://hub.example.com/";
+
+        await Create(db, "https://reader.example.com").EnsureSubscribedAsync(feed, Ct);
+
+        _http.Posts.Should().BeEmpty();
+        feed.WebSubSecret.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Does_nothing_without_a_public_url()
     {
         await using var db = _db.Create();

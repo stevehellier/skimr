@@ -14,8 +14,8 @@ Directory.Packages.props           central package versions
 .editorconfig / .gitattributes     LF for *.sh, Dockerfile, *.service; final newline
 src/
   Skimr.Domain/                    entities, value objects, enums. No package references.
-  Skimr.Application/               use cases, interfaces (IFeedFetcher, IFeedParser, IHtmlSanitizer,
-                                   ISearchService, ISummariser, ISafeHttpClient, IClock ...), DTOs
+  Skimr.Application/               empty so far (D30). Interfaces live with their implementation and
+                                   exist only where a test needs a fake (IOutboundHttp, IFeedRefresher)
   Skimr.Infrastructure/            SkimrDbContext + config, fetch/parse/discover, scheduler,
                                    sanitiser, SSRF guard, SmartReader, favicons, OPML, AI clients
   Skimr.Infrastructure.Sqlite/     SQLite migrations, FTS5 search impl, design-time factory
@@ -133,6 +133,8 @@ Folders map to `user/-/label/<name>`, Read Later to `starred`. Boards are not ex
 | D27 | RSS 0.9x is relabelled `version="2.0"` before parsing; RSS `<description>` is treated as HTML | The Syndication RSS formatter rejects other versions and labels descriptions as plain text |
 | D28 | All settings, including new `Fetch:*` and `Content:*` keys, are validated in the pre-host loader, not `IOptions.ValidateOnStart` | `ValidateOnStart` fires after migrations and prints a stack trace instead of the every-key-at-once list |
 | D29 | `Subscription.UserId` and `UserArticle.UserId` have no foreign key yet | Users arrive with Identity in Phase 3, which adds the constraint |
+| D30 | `Skimr.Application` stays empty for now: the fetching engine lives in Infrastructure, and interfaces exist only where a test needs a fake. Phase 3 decides whether user-facing use cases go there or the project is removed | The engine is all I/O; empty interface layers for single implementations add files without value (AGENTS.md) |
+| D31 | WebSub subscribes only to `https://` hubs | The subscribe request carries the HMAC secret |
 
 ## 5. Dependencies (all pre-approved by the stack; listed so later PRs don't stall)
 

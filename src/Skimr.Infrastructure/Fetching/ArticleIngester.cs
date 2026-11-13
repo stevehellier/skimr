@@ -91,21 +91,18 @@ internal sealed class ArticleIngester(SkimrDbContext db, ContentSanitizer saniti
         var url = item.Url is { Length: <= 2048 } ? item.Url : null;
         var content = sanitizer.Sanitize(item.ContentHtml, url ?? fallbackBase);
 
-        article.Guid = Limit(item.Id, 2048);
+        article.Guid = StoredText.Fit(item.Id, 2048);
         article.Url = url;
-        article.Title = Limit(item.Title.Length > 0 ? item.Title : HtmlText.Truncate(content.Snippet, 120), 1000) ?? "";
+        article.Title = StoredText.Fit(item.Title.Length > 0 ? item.Title : HtmlText.Truncate(content.Snippet, 120), 1000) ?? "";
         if (article.Title.Length == 0)
         {
             article.Title = "(untitled)";
         }
 
-        article.Author = Limit(item.Author, 500);
-        article.ContentHtml = content.Html;
-        article.Snippet = content.Snippet;
+        article.Author = StoredText.Fit(item.Author, 500);
+        article.ContentHtml = StoredText.Fit(content.Html, int.MaxValue);
+        article.Snippet = StoredText.Fit(content.Snippet, 500);
         article.ThumbnailUrl = new[] { item.ThumbnailUrl, content.FirstImageUrl }.FirstOrDefault(u => u is { Length: <= 2048 });
         article.ContentHash = contentHash;
     }
-
-    internal static string? Limit(string? value, int max) =>
-        value is null ? null : value.Length <= max ? value : value[..max];
 }

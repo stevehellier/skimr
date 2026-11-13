@@ -11,8 +11,9 @@ Phase 2 (Domain and fetching) done: entities, tolerant parsers, discovery, sanit
 ## Architecture
 
 - `Skimr.Domain` — entities only, no package references.
-- `Skimr.Application` — use cases and interfaces. Depends on Domain only.
-- `Skimr.Infrastructure` — EF Core, fetching, parsing, sanitising, SSRF guard, extraction, AI clients.
+- `Skimr.Application` — empty for now (PLAN D30). Depends on Domain only.
+- `Skimr.Infrastructure` — EF Core, fetching, parsing, sanitising, SSRF guard, extraction, AI clients. Interfaces only where a test needs a fake (`IOutboundHttp`, `IFeedRefresher`).
+- Every string from a feed is stored through `StoredText.Fit` (strips control chars Postgres rejects, respects column length).
 - `Skimr.Infrastructure.Sqlite` / `.Postgres` — per-provider migrations and search.
 - `Skimr.Web` — Blazor UI, REST + Google Reader + Fever APIs, auth, hosting, DI composition.
 
@@ -60,4 +61,4 @@ Config order: `appsettings.json` → env vars `SKIMR__Section__Key` → command 
 
 ## Decisions
 
-See `docs/PLAN.md` §4 (D1–D29). Add new decisions there, not here.
+See `docs/PLAN.md` §4 (D1–D31). Add new decisions there, not here.

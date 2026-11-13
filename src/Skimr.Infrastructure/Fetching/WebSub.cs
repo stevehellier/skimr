@@ -30,7 +30,9 @@ internal sealed partial class WebSub(
     /// <summary>Called after a successful fetch. Subscribes, or renews a lease that's about to run out.</summary>
     public async Task EnsureSubscribedAsync(Feed feed, CancellationToken cancellationToken)
     {
-        if (options.PublicUrl is null || feed.HubUrl is null || feed.SelfUrl is null)
+        // The secret travels in the subscribe request, so only send it over https (WebSub spec).
+        if (options.PublicUrl is null || feed.SelfUrl is null
+            || feed.HubUrl is not { } hub || !hub.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
             return;
         }

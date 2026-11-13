@@ -110,9 +110,10 @@ internal sealed partial class FeedScheduler(
                 }
                 catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
                 {
-                    // Unexpected (e.g. database) error: push the feed back so it isn't retried every tick.
+                    // Unexpected (e.g. database) error: record it on the feed so it shows in source
+                    // health, and push the feed back so it isn't retried every tick.
                     LogRefreshFailed(ex, feedId);
-                    await PostponeAsync(feedId, cancellationToken);
+                    await PostponeAsync(feedId, ex, cancellationToken);
                 }
                 finally
                 {
@@ -126,15 +127,23 @@ internal sealed partial class FeedScheduler(
         }
     }
 
-    private async Task PostponeAsync(long feedId, CancellationToken cancellationToken)
+    private async Task PostponeAsync(long feedId, Exception error, CancellationToken cancellationToken)
     {
         try
         {
             await using var scope = scopes.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<SkimrDbContext>();
-            var next = time.GetUtcNow().UtcDateTime.AddMinutes(options.DefaultIntervalMinutes);
+            var now = time.GetUtcNow().UtcDateTime;
+            var next = now.AddMinutes(options.DefaultIntervalMinutes);
+            var message = StoredText.Fit("Internal error: " + error.Message.Split('\n')[0].Trim(), 1000);
             await db.Feeds.Where(f => f.Id == feedId)
-                .ExecuteUpdateAsync(s => s.SetProperty(f => f.NextFetchAt, next), cancellationToken);
+                .ExecuteUpdateAsync(
+                    s => s
+                        .SetProperty(f => f.NextFetchAt, next)
+                        .SetProperty(f => f.LastErrorAt, now)
+                        .SetProperty(f => f.LastError, message)
+                        .SetProperty(f => f.ConsecutiveFailures, f => f.ConsecutiveFailures + 1),
+                    cancellationToken);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
