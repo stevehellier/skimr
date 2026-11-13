@@ -127,6 +127,12 @@ Folders map to `user/-/label/<name>`, Read Later to `starred`. Boards are not ex
 | D21 | Data Protection keys persisted to `<data>/keys` | Cookies survive restarts and container rebuilds; backup stays "copy one folder". Keys aren't encrypted at rest; filesystem permissions protect them |
 | D22 | Tests run on Microsoft.Testing.Platform (opted in via `global.json`) | .NET 10 SDK no longer runs xUnit v3 through VSTest |
 | D23 | Serilog registered with `preserveStaticLogger: true` | Several hosts in one test process otherwise share one static logger and leave log files locked |
+| D24 | `AllowPrivateNetworkFeeds` opens private, loopback, link-local and CGNAT ranges, but cloud metadata IPs (169.254.169.254, 169.254.170.2, 100.100.100.200, fd00:ec2::254) and non-unicast ranges stay blocked | A home-lab flag shouldn't also expose cloud credentials |
+| D25 | XML is read with `DtdProcessing = Ignore` + `XmlResolver = null`, not `Prohibit` | RSS 0.91 feeds carry the Netscape DOCTYPE and `Prohibit` rejects them. `Ignore` still never resolves external entities or expands internal ones: tests prove an external-entity feed can't read a local file and billion-laughs doesn't expand |
+| D26 | Broken XML gets one repair pass: encoding fallback (UTF-8 label on Windows-1252 bytes), stray BOM/whitespace before the prolog, invalid control characters, bare `&`, HTML-only entities; unknown entities become literal text | Real feeds break all of these; the repair uses the same safe reader settings |
+| D27 | RSS 0.9x is relabelled `version="2.0"` before parsing; RSS `<description>` is treated as HTML | The Syndication RSS formatter rejects other versions and labels descriptions as plain text |
+| D28 | All settings, including new `Fetch:*` and `Content:*` keys, are validated in the pre-host loader, not `IOptions.ValidateOnStart` | `ValidateOnStart` fires after migrations and prints a stack trace instead of the every-key-at-once list |
+| D29 | `Subscription.UserId` and `UserArticle.UserId` have no foreign key yet | Users arrive with Identity in Phase 3, which adds the constraint |
 
 ## 5. Dependencies (all pre-approved by the stack; listed so later PRs don't stall)
 
@@ -141,7 +147,8 @@ Folders map to `user/-/label/<name>`, Read Later to `starred`. Boards are not ex
 | System.ServiceModel.Syndication | MIT | RSS/Atom parsing |
 | Serilog.AspNetCore, Serilog.Sinks.File | Apache-2.0 | Logging |
 | SmartReader | Apache-2.0 | Full-text extraction |
-| HtmlSanitizer (AngleSharp transitively) | MIT | Sanitising; AngleSharp also used for discovery |
+| HtmlSanitizer | MIT | Sanitising |
+| AngleSharp | MIT | HTML parsing for discovery, plain text and snippets (also an HtmlSanitizer dependency) |
 | xunit.v3, xunit.runner.visualstudio, Microsoft.NET.Test.Sdk | Apache-2.0 / MIT | Tests |
 | AwesomeAssertions | Apache-2.0 | Assertions |
 | bunit | MIT | Component tests |
@@ -157,7 +164,7 @@ Each phase: one GitHub issue, one `<type>/<slug>` branch, one PR, merged when CI
 | # | Phase | Done when |
 |---|---|---|
 | 1 | **Skeleton** — solution, projects, DI, config binding + startup validation, Serilog, health checks, SQLite + Postgres wiring, first migration per provider, auto-migrate flag, Dockerfile, CI | `dotnet build` has 0 warnings; tests pass; app starts on SQLite and on Postgres (Testcontainers); `/health` and `/health/ready` return 200; `docker build` + `docker run` report healthy; CI green |
-| 2 | **Domain and fetching** — entities, parsers (RSS 0.9x/2.0, RDF, Atom, JSON Feed), discovery, scheduler, conditional GET, backoff, dedup, sanitiser, SSRF guard, WebSub | Fixture-based parser tests incl. bad dates, missing GUIDs, CDATA, mixed encodings, relative URLs; unit tests for dedup, backoff, scheduler, sanitiser, SSRF (incl. redirect-to-private and DNS rebinding); XXE fixture rejected |
+| 2 | **Domain and fetching** — entities, parsers (RSS 0.9x/2.0, RDF, Atom, JSON Feed), discovery, scheduler, conditional GET, backoff, dedup, sanitiser, SSRF guard, WebSub | Fixture-based parser tests incl. bad dates, missing GUIDs, CDATA, mixed encodings, relative URLs; unit tests for dedup, backoff, scheduler, sanitiser, SSRF (incl. redirect-to-private and DNS rebinding); an external-entity fixture cannot read a local file and billion-laughs does not expand (D25); ingest runs on both providers |
 | 3 | **Auth and multi-user** — Identity, setup wizard, registration modes, invites, admin user management, API tokens, lockout, rate limits | Integration tests: wizard runs once only; closed registration blocks sign-up; token auth works and revocation sticks; lockout and rate limit trigger |
 | 4 | **Core UI** — nav + unread counts, add/organise sources and folders, three layouts, reader pane, mark-read modes, Read Later, keyboard shortcuts, themes, responsive | bUnit tests for article list and nav counts; manual walk-through on desktop + mobile width; keyboard-only use works; AA contrast checked; a live interactive circuit runs with no CSP violations in a real browser console |
 | 5 | **Power features** — Boards, search (FTS5 / tsvector), full text, OPML, retention, favicons, image proxy, PWA | OPML round-trip test with nested folders; search tests on both providers; retention never removes saved/boarded; perf run: 500 sources / 200k articles, counts and first page each < 100 ms on SQLite (results saved under `results/`) |
