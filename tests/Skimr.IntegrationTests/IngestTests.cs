@@ -24,10 +24,9 @@ public abstract class IngestTests(AppFixture app)
     private async Task<(long FeedId, Guid[] Users)> RefreshAsync(string body, int times = 1)
     {
         await using var factory = app.WithServices(s => s.AddSingleton<IOutboundHttp>(new StaticHttp(body)));
-        Guid[] users = [Guid.NewGuid(), Guid.NewGuid()];
-
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SkimrDbContext>();
+        Guid[] users = [await TestData.AddUserAsync(db, Ct), await TestData.AddUserAsync(db, Ct)];
         var feed = new Feed { Url = $"https://p.example.com/{Guid.NewGuid():N}", CreatedAt = DateTime.UtcNow, NextFetchAt = DateTime.UtcNow };
         db.Feeds.Add(feed);
         await db.SaveChangesAsync(Ct);

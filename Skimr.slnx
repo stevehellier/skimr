@@ -1,6 +1,5 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/Skimr.Application/Skimr.Application.csproj" />
     <Project Path="src/Skimr.Domain/Skimr.Domain.csproj" />
     <Project Path="src/Skimr.Infrastructure.Postgres/Skimr.Infrastructure.Postgres.csproj" />
     <Project Path="src/Skimr.Infrastructure.Sqlite/Skimr.Infrastructure.Sqlite.csproj" />

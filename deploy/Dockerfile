@@ -8,7 +8,6 @@ WORKDIR /src
 
 COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./
 COPY src/Skimr.Domain/Skimr.Domain.csproj src/Skimr.Domain/
-COPY src/Skimr.Application/Skimr.Application.csproj src/Skimr.Application/
 COPY src/Skimr.Infrastructure/Skimr.Infrastructure.csproj src/Skimr.Infrastructure/
 COPY src/Skimr.Infrastructure.Sqlite/Skimr.Infrastructure.Sqlite.csproj src/Skimr.Infrastructure.Sqlite/
 COPY src/Skimr.Infrastructure.Postgres/Skimr.Infrastructure.Postgres.csproj src/Skimr.Infrastructure.Postgres/

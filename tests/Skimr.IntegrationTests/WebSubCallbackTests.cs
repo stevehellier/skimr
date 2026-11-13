@@ -30,7 +30,7 @@ public abstract class WebSubCallbackTests(AppFixture app)
         };
         db.Feeds.Add(feed);
         await db.SaveChangesAsync(Ct);
-        db.Subscriptions.Add(new Subscription { UserId = Guid.NewGuid(), FeedId = feed.Id, CreatedAt = DateTime.UtcNow });
+        db.Subscriptions.Add(new Subscription { UserId = await TestData.AddUserAsync(db, Ct), FeedId = feed.Id, CreatedAt = DateTime.UtcNow });
         await db.SaveChangesAsync(Ct);
         return feed.Id;
     }

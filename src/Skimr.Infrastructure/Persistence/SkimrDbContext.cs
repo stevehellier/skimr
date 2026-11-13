@@ -1,12 +1,20 @@
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Skimr.Domain;
+using Skimr.Infrastructure.Identity;
 
 namespace Skimr.Infrastructure.Persistence;
 
-public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options) : DbContext(options)
+public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options)
+    : IdentityDbContext<SkimrUser, IdentityRole<Guid>, Guid>(options)
 {
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
+
+    public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
+
+    public DbSet<Invite> Invites => Set<Invite>();
 
     public DbSet<Feed> Feeds => Set<Feed>();
 
@@ -26,6 +34,27 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options) : D
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<ApiToken>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.Prefix).HasMaxLength(16);
+            e.Property(x => x.TokenHash).HasMaxLength(64);
+            e.HasIndex(x => x.TokenHash).IsUnique();
+            e.HasIndex(x => x.UserId);
+            e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Invite>(e =>
+        {
+            e.Property(x => x.TokenHash).HasMaxLength(64);
+            e.HasIndex(x => x.TokenHash).IsUnique();
+            e.Property(x => x.Note).HasMaxLength(200);
+            e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.UsedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
         modelBuilder.Entity<AppSetting>(e =>
         {
             e.HasKey(x => x.Key);
@@ -71,6 +100,7 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options) : D
             e.HasIndex(x => x.FeedId);
             e.Property(x => x.CustomTitle).HasMaxLength(500);
             e.HasOne(x => x.Feed).WithMany(f => f.Subscriptions).HasForeignKey(x => x.FeedId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<UserArticle>(e =>
@@ -82,6 +112,7 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options) : D
             e.HasIndex(x => new { x.UserId, x.IsSaved, x.SavedAt });
             e.HasIndex(x => x.ArticleId);
             e.HasOne(x => x.Article).WithMany().HasForeignKey(x => x.ArticleId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 

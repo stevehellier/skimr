@@ -4,7 +4,6 @@ public sealed class Subscription
 {
     public long Id { get; set; }
 
-    // Foreign key to the user is added with Identity in Phase 3.
     public Guid UserId { get; set; }
 
     public long FeedId { get; set; }
