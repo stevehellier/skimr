@@ -84,6 +84,62 @@ public sealed class SkimrSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Fetch_and_content_defaults()
+    {
+        var settings = Load();
+
+        settings.Fetch.Enabled.Should().BeTrue();
+        settings.Fetch.Concurrency.Should().Be(8);
+        settings.Fetch.DefaultIntervalMinutes.Should().Be(30);
+        settings.Fetch.Timeout.Should().Be(TimeSpan.FromSeconds(30));
+        settings.Fetch.MaxResponseBytes.Should().Be(10 * 1024 * 1024);
+        settings.Fetch.MaxRedirects.Should().Be(5);
+        settings.Fetch.AllowPrivateNetworks.Should().BeFalse();
+        settings.Fetch.PublicUrl.Should().BeNull();
+        settings.Content.AllowedEmbedHosts.Should().Contain("www.youtube-nocookie.com");
+    }
+
+    [Fact]
+    public void Fetch_and_content_values_are_read()
+    {
+        var settings = Load(
+            ("Fetch:Concurrency", "2"),
+            ("Fetch:DefaultIntervalMinutes", "60"),
+            ("Fetch:AllowPrivateNetworkFeeds", "true"),
+            ("Server:PublicUrl", "https://reader.example.com/skimr/"),
+            ("Content:AllowedEmbedHosts", "player.vimeo.com"));
+
+        settings.Fetch.Concurrency.Should().Be(2);
+        settings.Fetch.DefaultIntervalMinutes.Should().Be(60);
+        settings.Fetch.AllowPrivateNetworks.Should().BeTrue();
+        settings.Fetch.PublicUrl.Should().Be(new Uri("https://reader.example.com/skimr"));
+        settings.Content.AllowedEmbedHosts.Should().Equal("player.vimeo.com");
+    }
+
+    [Fact]
+    public void Empty_embed_list_disables_embeds()
+    {
+        Load(("Content:AllowedEmbedHosts", "")).Content.AllowedEmbedHosts.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Bad_fetch_values_are_all_reported()
+    {
+        var act = () => Load(
+            ("Fetch:Concurrency", "0"),
+            ("Fetch:DefaultIntervalMinutes", "4"),
+            ("Fetch:TimeoutSeconds", "abc"),
+            ("Fetch:MaxResponseMegabytes", "500"),
+            ("Fetch:AllowPrivateNetworkFeeds", "yes"),
+            ("Server:PublicUrl", "ftp://x"),
+            ("Content:AllowedEmbedHosts", "not a host"));
+
+        act.Should().Throw<InvalidConfigurationException>()
+            .Which.Errors.Should().HaveCount(7)
+            .And.Contain(e => e.StartsWith("Fetch:DefaultIntervalMinutes must be a whole number from 5", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Unwritable_data_directory_fails()
     {
         // A file where the directory should be makes CreateDirectory fail on every OS.

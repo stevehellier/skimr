@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Serilog;
+using Skimr.Infrastructure;
 using Skimr.Infrastructure.Persistence;
 using Skimr.Infrastructure.Postgres;
 using Skimr.Infrastructure.Sqlite;
@@ -56,6 +57,8 @@ builder.Services.AddDbContext<SkimrDbContext>(options => _ = settings.Provider s
     _ => throw new InvalidOperationException($"Unknown provider {settings.Provider}"),
 });
 
+builder.Services.AddSkimrInfrastructure(settings.Fetch, settings.Content);
+
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
@@ -94,7 +97,7 @@ if (settings.BasePath.Length > 0)
 }
 
 app.UseRouting();
-app.UseSecurityHeaders();
+app.UseSecurityHeaders(settings.Content);
 
 if (!app.Environment.IsDevelopment())
 {

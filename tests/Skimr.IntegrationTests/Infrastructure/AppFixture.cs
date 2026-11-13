@@ -18,6 +18,8 @@ public abstract class AppFixture : IAsyncLifetime
         var settings = new Dictionary<string, string>(await DatabaseSettingsAsync())
         {
             ["Storage:DataDirectory"] = _dataDirectory,
+            // Tests drive fetching explicitly; the background scheduler would race them.
+            ["Fetch:Enabled"] = "false",
         };
         Factory = new SkimrFactory(settings);
     }

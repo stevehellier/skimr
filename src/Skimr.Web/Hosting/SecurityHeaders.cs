@@ -1,20 +1,30 @@
+using Skimr.Infrastructure.Content;
+
 namespace Skimr.Web.Hosting;
 
 internal static class SecurityHeaders
 {
-    // No inline script or style anywhere: the Blazor Server runtime doesn't need them.
-    private const string ContentSecurityPolicy =
-        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; " +
-        "connect-src 'self'; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; " +
-        "base-uri 'self'; form-action 'self'";
+    /// <summary>No inline script or style anywhere: the Blazor Server runtime doesn't need them.</summary>
+    internal static string ContentSecurityPolicy(ContentOptions content)
+    {
+        var frames = content.AllowedEmbedHosts.Count == 0
+            ? "'none'"
+            : string.Join(' ', content.AllowedEmbedHosts.Select(h => "https://" + h));
 
-    public static IApplicationBuilder UseSecurityHeaders(this IApplicationBuilder app) =>
-        app.Use(async (context, next) =>
+        return "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; " +
+            $"connect-src 'self'; frame-src {frames}; frame-ancestors 'none'; object-src 'none'; " +
+            "base-uri 'self'; form-action 'self'";
+    }
+
+    public static IApplicationBuilder UseSecurityHeaders(this IApplicationBuilder app, ContentOptions content)
+    {
+        var policy = ContentSecurityPolicy(content);
+        return app.Use(async (context, next) =>
         {
             context.Response.OnStarting(() =>
             {
                 var headers = context.Response.Headers;
-                headers.ContentSecurityPolicy = ContentSecurityPolicy;
+                headers.ContentSecurityPolicy = policy;
                 headers.XContentTypeOptions = "nosniff";
                 headers.XFrameOptions = "DENY";
                 headers["Referrer-Policy"] = "no-referrer";
@@ -22,4 +32,5 @@ internal static class SecurityHeaders
             });
             await next(context);
         });
+    }
 }
