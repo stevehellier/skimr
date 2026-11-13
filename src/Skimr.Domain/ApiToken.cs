@@ -14,6 +14,12 @@ public sealed class ApiToken
 
     public required string TokenHash { get; set; }
 
+    /// <summary>
+    /// SHA-256 of the Fever API key, md5("UserName:token") (PLAN D61). Set when the token is
+    /// created, the only time the plain token exists; null for tokens made before Fever support.
+    /// </summary>
+    public string? FeverKeyHash { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime? LastUsedAt { get; set; }

@@ -56,6 +56,8 @@ public sealed class SkimrDbContext(DbContextOptions<SkimrDbContext> options)
             e.Property(x => x.Prefix).HasMaxLength(16);
             e.Property(x => x.TokenHash).HasMaxLength(64);
             e.HasIndex(x => x.TokenHash).IsUnique();
+            e.Property(x => x.FeverKeyHash).HasMaxLength(64);
+            e.HasIndex(x => x.FeverKeyHash).IsUnique();
             e.HasIndex(x => x.UserId);
             e.HasOne<SkimrUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });

@@ -70,4 +70,4 @@ Config order: `appsettings.json` → env vars `SKIMR__Section__Key` → command 
 
 ## Decisions
 
-See `docs/PLAN.md` §4 (D1–D57). Add new decisions there, not here.
+See `docs/PLAN.md` §4 (D1–D61). Add new decisions there, not here.

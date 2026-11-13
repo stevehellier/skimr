@@ -7,7 +7,10 @@ using Skimr.Infrastructure.Identity;
 
 namespace Skimr.Web.Auth;
 
-/// <summary><c>Authorization: Bearer skimr_…</c>. The only way into /api (PLAN D33).</summary>
+/// <summary>
+/// <c>Authorization: Bearer skimr_…</c>, or <c>GoogleLogin auth=skimr_…</c> from Google Reader
+/// clients. The only way into /api (PLAN D33); never a cookie.
+/// </summary>
 internal sealed class ApiTokenAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,
@@ -19,16 +22,27 @@ internal sealed class ApiTokenAuthenticationHandler(
 {
     public const string SchemeName = "ApiToken";
     public const string TokenIdClaim = "skimr:token_id";
+    private const string GoogleLoginPrefix = "GoogleLogin auth=";
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var header = Request.Headers.Authorization.ToString();
-        if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        string plain;
+        if (header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            plain = header["Bearer ".Length..].Trim();
+        }
+        else if (header.StartsWith(GoogleLoginPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            // Google Reader clients send back the Auth value from ClientLogin, which is the token itself.
+            plain = header[GoogleLoginPrefix.Length..].Trim();
+        }
+        else
         {
             return AuthenticateResult.NoResult();
         }
 
-        var token = await tokens.ValidateAsync(header["Bearer ".Length..].Trim(), Context.RequestAborted);
+        var token = await tokens.ValidateAsync(plain, Context.RequestAborted);
         if (token is null)
         {
             return AuthenticateResult.Fail("Invalid or expired token.");

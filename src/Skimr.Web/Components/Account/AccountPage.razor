@@ -3,6 +3,7 @@
 @inject AccountService Accounts
 @inject ApiTokenService Tokens
 @inject UserManager<SkimrUser> Users
+@inject NavigationManager Nav
 
 <PageTitle>Account · Skimr</PageTitle>
 
@@ -28,7 +29,12 @@
 
 <section aria-labelledby="tokens-heading">
     <h2 id="tokens-heading">API tokens</h2>
-    <p>For apps and scripts that use the Skimr API. Send as <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+    <p>For apps and scripts. Each app gets its own token, so you can revoke one without the others.</p>
+    <ul>
+        <li>Skimr API (<a href="api/docs/">docs</a>): send <code>Authorization: Bearer &lt;token&gt;</code>.</li>
+        <li>Google Reader apps (NetNewsWire's "FreshRSS" account, Reeder, ReadKit): server <code>@ServerUrl("api/greader")</code>, user name <code data-testid="user-name">@_userName</code>, password: a token.</li>
+        <li>Fever apps: server <code>@ServerUrl("api/fever")</code>, the same user name exactly as shown (letter case matters), password: a token marked "Fever: yes" below. Tokens created before Fever support can't be used for Fever.</li>
+    </ul>
 
     @if (_newToken is not null)
     {
@@ -55,7 +61,7 @@
     @if (_tokens.Count > 0)
     {
         <table>
-            <thead><tr><th>Name</th><th>Starts with</th><th>Created</th><th>Last used</th><th>Expires</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Starts with</th><th>Created</th><th>Last used</th><th>Expires</th><th>Fever</th><th></th></tr></thead>
             <tbody>
                 @foreach (var token in _tokens)
                 {
@@ -65,6 +71,7 @@
                         <td>@token.CreatedAt.ToString("yyyy-MM-dd")</td>
                         <td>@(token.LastUsedAt?.ToString("yyyy-MM-dd HH:mm") ?? "never")</td>
                         <td>@(token.ExpiresAt?.ToString("yyyy-MM-dd") ?? "never")</td>
+                        <td>@(token.FeverKeyHash is null ? "no" : "yes")</td>
                         <td><button form="token-action" name="TokenAction.Id" value="@token.Id" class="danger">Revoke</button></td>
                     </tr>
                 }
@@ -77,6 +84,7 @@
     private Guid _userId;
     private List<ApiToken> _tokens = [];
     private string? _newToken;
+    private string _userName = "";
     private IReadOnlyList<string> _passwordErrors = [];
     private bool _passwordChanged;
 
@@ -97,9 +105,13 @@
         Password ??= new();
         NewToken ??= new();
         TokenAction ??= new();
-        _userId = Guid.Parse(Users.GetUserId((await AuthState).User)!);
+        var principal = (await AuthState).User;
+        _userId = Guid.Parse(Users.GetUserId(principal)!);
+        _userName = principal.Identity?.Name ?? "";
         await LoadAsync();
     }
+
+    private string ServerUrl(string path) => Nav.ToAbsoluteUri(path).AbsoluteUri;
 
     private async Task LoadAsync() => _tokens = await Tokens.ListAsync(_userId, CancellationToken.None);
 

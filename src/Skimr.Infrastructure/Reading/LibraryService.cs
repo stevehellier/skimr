@@ -6,11 +6,14 @@ using Skimr.Infrastructure.Persistence;
 
 namespace Skimr.Infrastructure.Reading;
 
-public sealed record LibraryResult(bool Succeeded, string? Error = null, long? Id = null)
+public sealed record LibraryResult(bool Succeeded, string? Error = null, long? Id = null, bool IsNotFound = false)
 {
     public static LibraryResult Ok(long? id = null) => new(true, null, id);
 
     public static LibraryResult Fail(string error) => new(false, error);
+
+    /// <summary>The thing doesn't exist or isn't the user's (APIs answer 404 either way).</summary>
+    public static LibraryResult Missing(string error) => new(false, error, IsNotFound: true);
 }
 
 public sealed record DiscoveredSource(string Url, string? Title);
@@ -28,7 +31,8 @@ public sealed record SourceDetails(
     DateTime? LastErrorAt,
     string? LastError,
     int ConsecutiveFailures,
-    DateTime NextFetchAt);
+    DateTime NextFetchAt,
+    long? IconId = null);
 
 public sealed record FolderDetails(long Id, string Name, int SortOrder);
 
@@ -116,7 +120,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
         var subscription = await db.Subscriptions.SingleOrDefaultAsync(s => s.Id == subscriptionId && s.UserId == userId, cancellationToken);
         if (subscription is null)
         {
-            return LibraryResult.Fail("Source not found.");
+            return LibraryResult.Missing("Source not found.");
         }
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -142,7 +146,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
         var subscription = await db.Subscriptions.Include(s => s.Folders).SingleOrDefaultAsync(s => s.Id == subscriptionId && s.UserId == userId, cancellationToken);
         if (subscription is null)
         {
-            return LibraryResult.Fail("Source not found.");
+            return LibraryResult.Missing("Source not found.");
         }
 
         subscription.CustomTitle = StoredText.Fit(string.IsNullOrWhiteSpace(customTitle) ? null : customTitle.Trim(), 500);
@@ -164,7 +168,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
         var subscription = await db.Subscriptions.Include(s => s.Folders).SingleOrDefaultAsync(s => s.Id == subscriptionId && s.UserId == userId, cancellationToken);
         if (subscription is null)
         {
-            return LibraryResult.Fail("Source not found.");
+            return LibraryResult.Missing("Source not found.");
         }
 
         if (subscription.Folders.All(f => f.FolderId != folderId))
@@ -183,7 +187,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
         var feedId = await db.Subscriptions.Where(s => s.Id == subscriptionId && s.UserId == userId).Select(s => (long?)s.FeedId).SingleOrDefaultAsync(cancellationToken);
         if (feedId is null)
         {
-            return LibraryResult.Fail("Source not found.");
+            return LibraryResult.Missing("Source not found.");
         }
 
         var now = time.GetUtcNow().UtcDateTime;
@@ -211,7 +215,8 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
                 s.Feed.LastErrorAt,
                 s.Feed.LastError,
                 s.Feed.ConsecutiveFailures,
-                s.Feed.NextFetchAt))
+                s.Feed.NextFetchAt,
+                s.Feed.IconId))
             .AsNoTracking()
             .ToListAsync(cancellationToken);
         return rows;
@@ -229,7 +234,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
                 .ToListAsync(cancellationToken);
             if (!Swap(links, l => l.SubscriptionId == subscriptionId, direction, (l, order) => l.SortOrder = order))
             {
-                return LibraryResult.Fail("Source not found.");
+                return LibraryResult.Missing("Source not found.");
             }
         }
         else
@@ -240,7 +245,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
                 .ToListAsync(cancellationToken);
             if (!Swap(subscriptions, s => s.Id == subscriptionId, direction, (s, order) => s.SortOrder = order))
             {
-                return LibraryResult.Fail("Source not found.");
+                return LibraryResult.Missing("Source not found.");
             }
         }
 
@@ -299,7 +304,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
         var folder = await db.Folders.SingleOrDefaultAsync(f => f.Id == folderId && f.UserId == userId, cancellationToken);
         if (folder is null)
         {
-            return LibraryResult.Fail("Folder not found.");
+            return LibraryResult.Missing("Folder not found.");
         }
 
         if (await db.Folders.AnyAsync(f => f.UserId == userId && f.Name == clean && f.Id != folderId, cancellationToken))
@@ -317,7 +322,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
     {
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         var deleted = await db.Folders.Where(f => f.Id == folderId && f.UserId == userId).ExecuteDeleteAsync(cancellationToken);
-        return deleted > 0 ? LibraryResult.Ok(folderId) : LibraryResult.Fail("Folder not found.");
+        return deleted > 0 ? LibraryResult.Ok(folderId) : LibraryResult.Missing("Folder not found.");
     }
 
     public async Task<LibraryResult> MoveFolderAsync(Guid userId, long folderId, MoveDirection direction, CancellationToken cancellationToken)
@@ -326,7 +331,7 @@ internal sealed class LibraryService(IDbContextFactory<SkimrDbContext> contexts,
         var folders = await db.Folders.Where(f => f.UserId == userId).OrderBy(f => f.SortOrder).ThenBy(f => f.Name).ToListAsync(cancellationToken);
         if (!Swap(folders, f => f.Id == folderId, direction, (f, order) => f.SortOrder = order))
         {
-            return LibraryResult.Fail("Folder not found.");
+            return LibraryResult.Missing("Folder not found.");
         }
 
         await db.SaveChangesAsync(cancellationToken);

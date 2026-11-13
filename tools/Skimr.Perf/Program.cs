@@ -161,7 +161,7 @@ if (analyzeStats)
         report.AppendLine($"Startup PRAGMA optimize on this database took {optimizeTimer.Elapsed.TotalSeconds:F1} s.");
     }
 
-Log($"# Phase 5 performance run ({DateTime.UtcNow:yyyy-MM-dd})");
+Log($"# Performance run ({DateTime.UtcNow:yyyy-MM-dd})");
 Log("");
 Log($"SQLite file in WAL mode, real migrations (FTS5 triggers on), {(analyzeStats ? "after the app's startup PRAGMA optimize (steady state)" : "no statistics yet (worst case: straight after a bulk load, before the next restart or retention run)")}. {Feeds} sources in {Folders} folders, {Feeds * ArticlesPerFeed:N0} articles for one user, 70% read, 1% saved, published over 120 days. Seeded in {seedTimer.Elapsed.TotalSeconds:F1} s.");
 Log($"Machine: {Environment.ProcessorCount} logical CPUs, {System.Runtime.InteropServices.RuntimeInformation.OSDescription}, .NET {Environment.Version}. Each operation: {Warmup} warm-up runs, then {Runs} timed runs.");
@@ -235,21 +235,41 @@ await TimeAsync("Per click: mark one read, then reload nav", async () =>
     await reading.SetReadAsync(userId, [nextUnread.Dequeue()], true, ct);
     await reading.GetNavAsync(userId, ct);
 }, "< 150 ms");
+await TimeAsync("Google Reader: unread ids, reading list (n=10000)", () =>
+    reading.GetArticleRefsAsync(userId, ReaderView.All, new SyncFilter(Read: false), ArticleSort.Newest, null, 10_000, ct));
+await TimeAsync("Google Reader: unread-count", () => reading.GetUnreadByFeedAsync(userId, ct));
 
-// ---- Query plan for the unread counts --------------------------------------------------
+// ---- Query plans -----------------------------------------------------------------------
 await using (var db = await contexts.CreateDbContextAsync())
 {
-    var countSql = db.UserArticles
+    await PlanAsync(db, "Query plan: unread counts per source", db.UserArticles
         .Where(u => u.UserId == userId && !u.IsRead)
         .GroupBy(u => u.FeedId)
         .Select(g => new { g.Key, Count = g.Count() })
-        .ToQueryString();
+        .ToQueryString());
+
+    // The same shape ReadingService.GetArticleRefsAsync builds for the reading list with xt=read.
+    await PlanAsync(db, "Query plan: Google Reader unread ids (reading list)", db.UserArticles
+        .Where(u => u.UserId == userId && db.Subscriptions.Any(s => s.UserId == userId && s.FeedId == u.FeedId))
+        .Where(u => !u.IsRead)
+        .OrderByDescending(u => u.PublishedAt).ThenByDescending(u => u.ArticleId)
+        .Take(10_001)
+        .Select(u => new { u.ArticleId, u.PublishedAt })
+        .ToQueryString());
+}
+
+async Task PlanAsync(SkimrDbContext db, string title, string sql)
+{
     var plan = new List<string>();
     var connection = db.Database.GetDbConnection();
-    await connection.OpenAsync();
+    if (connection.State != System.Data.ConnectionState.Open)
+    {
+        await connection.OpenAsync();
+    }
+
     await using var command = connection.CreateCommand();
     // SQLite's ToQueryString starts with ".param set @name 'value'" lines (CLI syntax); turn them into parameters.
-    var lines = countSql.Split('\n');
+    var lines = sql.Split('\n');
     command.CommandText = "EXPLAIN QUERY PLAN " + string.Join('\n', lines.Where(l => !l.StartsWith(".param", StringComparison.Ordinal) && !l.StartsWith("--", StringComparison.Ordinal)));
     foreach (var line in lines.Where(l => l.StartsWith(".param set", StringComparison.Ordinal)))
     {
@@ -269,7 +289,7 @@ await using (var db = await contexts.CreateDbContextAsync())
     }
 
     Log("");
-    Log("## Query plan: unread counts per source");
+    Log("## " + title);
     Log("");
     Log("```");
     plan.ForEach(Log);

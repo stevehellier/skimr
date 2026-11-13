@@ -43,6 +43,30 @@ public sealed record ArticleListItem(
 
 public sealed record ArticlePage(IReadOnlyList<ArticleListItem> Items, ArticleCursor? Next);
 
+/// <summary>Sync filters (Google Reader, Fever). Null means "either".</summary>
+public sealed record SyncFilter(bool? Read = null, bool? Saved = null, DateTime? Since = null, DateTime? Until = null);
+
+public sealed record ArticleRef(long ArticleId, DateTime PublishedAt);
+
+public sealed record ArticleRefPage(IReadOnlyList<ArticleRef> Items, ArticleCursor? Next);
+
+/// <summary>An article as sync clients see it. <see cref="SubscriptionId"/> is null once its source is dropped.</summary>
+public sealed record SyncItem(
+    long ArticleId,
+    long? SubscriptionId,
+    string SourceTitle,
+    string? SiteUrl,
+    string Title,
+    string? Url,
+    string? Author,
+    DateTime PublishedAt,
+    DateTime FetchedAt,
+    string ContentHtml,
+    bool IsRead,
+    bool IsSaved);
+
+public sealed record FeedUnread(long SubscriptionId, int Count, DateTime Newest);
+
 public sealed record ArticleDetail(
     long ArticleId,
     string SourceTitle,
@@ -268,6 +292,21 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, I
             .ExecuteUpdateAsync(s => s.SetProperty(u => u.IsRead, read).SetProperty(u => u.ReadAt, readAt), cancellationToken);
     }
 
+    /// <returns>How many rows changed (already-saved rows don't count).</returns>
+    public async Task<int> SetSavedAsync(Guid userId, IReadOnlyCollection<long> articleIds, bool saved, CancellationToken cancellationToken)
+    {
+        if (articleIds.Count == 0)
+        {
+            return 0;
+        }
+
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        DateTime? savedAt = saved ? time.GetUtcNow().UtcDateTime : null;
+        return await db.UserArticles
+            .Where(u => u.UserId == userId && articleIds.Contains(u.ArticleId) && u.IsSaved != saved)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.IsSaved, saved).SetProperty(u => u.SavedAt, savedAt), cancellationToken);
+    }
+
     public async Task<bool> SetSavedAsync(Guid userId, long articleId, bool saved, CancellationToken cancellationToken)
     {
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
@@ -278,14 +317,17 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, I
     }
 
     /// <param name="olderThan">Only articles published longer ago than this; null for all.</param>
-    public async Task<int> MarkAllReadAsync(Guid userId, ReaderView view, TimeSpan? olderThan, CancellationToken cancellationToken)
+    public Task<int> MarkAllReadAsync(Guid userId, ReaderView view, TimeSpan? olderThan, CancellationToken cancellationToken) =>
+        MarkReadBeforeAsync(userId, view, olderThan is { } age ? time.GetUtcNow().UtcDateTime - age : null, cancellationToken);
+
+    /// <param name="publishedBefore">Only articles published before this; null for all. Sync clients send the time they last listed.</param>
+    public async Task<int> MarkReadBeforeAsync(Guid userId, ReaderView view, DateTime? publishedBefore, CancellationToken cancellationToken)
     {
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         var now = time.GetUtcNow().UtcDateTime;
         var query = (await InViewAsync(db, userId, view, cancellationToken)).Where(u => !u.IsRead);
-        if (olderThan is { } age)
+        if (publishedBefore is { } cutoff)
         {
-            var cutoff = now - age;
             query = query.Where(u => u.PublishedAt < cutoff);
         }
 
@@ -364,6 +406,150 @@ public sealed class ReadingService(IDbContextFactory<SkimrDbContext> contexts, I
         }
 
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    // ---- Sync APIs (Google Reader, Fever) ------------------------------------------------
+
+    /// <summary>Article ids and dates in a view, keyset-paged like the reader's lists.</summary>
+    public async Task<ArticleRefPage> GetArticleRefsAsync(
+        Guid userId, ReaderView view, SyncFilter filter, ArticleSort sort, ArticleCursor? after, int limit, CancellationToken cancellationToken)
+    {
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        var query = Filter(await InViewAsync(db, userId, view, cancellationToken), filter);
+        if (after is not null)
+        {
+            query = sort == ArticleSort.Newest
+                ? query.Where(u => u.PublishedAt < after.PublishedAt || (u.PublishedAt == after.PublishedAt && u.ArticleId < after.ArticleId))
+                : query.Where(u => u.PublishedAt > after.PublishedAt || (u.PublishedAt == after.PublishedAt && u.ArticleId > after.ArticleId));
+        }
+
+        query = sort == ArticleSort.Newest
+            ? query.OrderByDescending(u => u.PublishedAt).ThenByDescending(u => u.ArticleId)
+            : query.OrderBy(u => u.PublishedAt).ThenBy(u => u.ArticleId);
+        var rows = await query.Take(limit + 1).Select(u => new ArticleRef(u.ArticleId, u.PublishedAt)).ToListAsync(cancellationToken);
+        var next = rows.Count > limit ? new ArticleCursor(rows[limit - 1].PublishedAt, rows[limit - 1].ArticleId) : null;
+        return new ArticleRefPage(rows.Take(limit).ToList(), next);
+    }
+
+    /// <summary>
+    /// Ids from subscribed sources, paged by id as Fever does: ascending after <paramref name="sinceId"/>,
+    /// otherwise descending below <paramref name="maxId"/> (or from the newest).
+    /// </summary>
+    public async Task<IReadOnlyList<long>> GetArticleIdsByIdAsync(Guid userId, long? sinceId, long? maxId, int limit, CancellationToken cancellationToken)
+    {
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        var query = await InViewAsync(db, userId, ReaderView.All, cancellationToken);
+        if (sinceId is { } since)
+        {
+            return await query.Where(u => u.ArticleId > since).OrderBy(u => u.ArticleId).Take(limit).Select(u => u.ArticleId).ToListAsync(cancellationToken);
+        }
+
+        if (maxId is { } max)
+        {
+            query = query.Where(u => u.ArticleId < max);
+        }
+
+        return await query.OrderByDescending(u => u.ArticleId).Take(limit).Select(u => u.ArticleId).ToListAsync(cancellationToken);
+    }
+
+    /// <summary>Every unread id from subscribed sources, or every saved id (Read Later keeps dropped sources' articles).</summary>
+    public async Task<IReadOnlyList<long>> GetAllArticleIdsAsync(Guid userId, SyncFilter filter, CancellationToken cancellationToken)
+    {
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        var rows = filter.Saved == true
+            ? db.UserArticles.Where(u => u.UserId == userId)
+            : await InViewAsync(db, userId, ReaderView.All, cancellationToken);
+        return await Filter(rows, filter).Select(u => u.ArticleId).ToListAsync(cancellationToken);
+    }
+
+    public async Task<int> CountAsync(Guid userId, ReaderView view, CancellationToken cancellationToken)
+    {
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        return await (await InViewAsync(db, userId, view, cancellationToken)).CountAsync(cancellationToken);
+    }
+
+    /// <summary>The user's articles among <paramref name="articleIds"/>, newest first; other ids are ignored.</summary>
+    public async Task<IReadOnlyList<SyncItem>> GetSyncItemsAsync(Guid userId, IReadOnlyCollection<long> articleIds, CancellationToken cancellationToken)
+    {
+        if (articleIds.Count == 0)
+        {
+            return [];
+        }
+
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        var subscriptions = await db.Subscriptions
+            .Where(s => s.UserId == userId)
+            .Select(s => new { s.Id, s.FeedId, s.CustomTitle })
+            .ToDictionaryAsync(s => s.FeedId, cancellationToken);
+        var rows = await db.UserArticles
+            .Where(u => u.UserId == userId && articleIds.Contains(u.ArticleId))
+            .OrderByDescending(u => u.PublishedAt).ThenByDescending(u => u.ArticleId)
+            .Select(u => new
+            {
+                u.ArticleId,
+                u.FeedId,
+                FeedTitle = u.Article!.Feed!.Title ?? u.Article.Feed.Url,
+                u.Article.Feed.SiteUrl,
+                u.Article.Title,
+                u.Article.Url,
+                u.Article.Author,
+                u.PublishedAt,
+                u.Article.FetchedAt,
+                u.Article.ContentHtml,
+                u.IsRead,
+                u.IsSaved,
+            })
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(r =>
+        {
+            var subscription = subscriptions.GetValueOrDefault(r.FeedId);
+            return new SyncItem(
+                r.ArticleId, subscription?.Id, subscription?.CustomTitle ?? r.FeedTitle, r.SiteUrl, r.Title, r.Url, r.Author,
+                r.PublishedAt, r.FetchedAt, r.ContentHtml ?? "", r.IsRead, r.IsSaved);
+        }).ToList();
+    }
+
+    /// <summary>Unread count and newest unread date per subscribed source; the same grouped scan as the nav.</summary>
+    public async Task<IReadOnlyList<FeedUnread>> GetUnreadByFeedAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        var subscriptions = await db.Subscriptions.Where(s => s.UserId == userId).ToDictionaryAsync(s => s.FeedId, s => s.Id, cancellationToken);
+        var unread = await db.UserArticles
+            .Where(u => u.UserId == userId && !u.IsRead)
+            .GroupBy(u => u.FeedId)
+            .Select(g => new { FeedId = g.Key, Count = g.Count(), Newest = g.Max(u => u.PublishedAt) })
+            .ToListAsync(cancellationToken);
+        return unread
+            .Where(x => subscriptions.ContainsKey(x.FeedId))
+            .Select(x => new FeedUnread(subscriptions[x.FeedId], x.Count, x.Newest))
+            .ToList();
+    }
+
+    private static IQueryable<UserArticle> Filter(IQueryable<UserArticle> query, SyncFilter filter)
+    {
+        if (filter.Read is { } read)
+        {
+            query = read ? query.Where(u => u.IsRead) : query.Where(u => !u.IsRead);
+        }
+
+        if (filter.Saved is { } saved)
+        {
+            query = saved ? query.Where(u => u.IsSaved) : query.Where(u => !u.IsSaved);
+        }
+
+        if (filter.Since is { } since)
+        {
+            query = query.Where(u => u.PublishedAt >= since);
+        }
+
+        if (filter.Until is { } until)
+        {
+            query = query.Where(u => u.PublishedAt < until);
+        }
+
+        return query;
     }
 
     /// <summary>

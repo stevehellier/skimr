@@ -264,6 +264,11 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
             u => Regex.IsMatch(u, @"\.[a-z0-9]{8,}\.(css|js|png|svg|woff2?)$", RegexOptions.IgnoreCase),
             "only fingerprinted static files are cached: never pages, API, proxied images or icons");
 
+        // ---- API docs (Scalar) render under their own CSP ----------------------------------
+        await page.GotoAsync(_baseUrl + "api/docs/");
+        await Assertions.Expect(page.GetByText("ListArticles").Or(page.GetByText("/api/v1/articles")).First).ToBeVisibleAsync(new() { Timeout = 20_000 });
+        await ShotAsync(page, "api-docs");
+
         // ---- Phone width -------------------------------------------------------------------
         var state = await page.Context.StorageStateAsync();
         var phone = await NewPageAsync(new BrowserNewContextOptions
