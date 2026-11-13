@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Skimr.Infrastructure.Content;
+using Skimr.Infrastructure.Feeds;
 using Skimr.Infrastructure.Fetching;
 
 namespace Skimr.Infrastructure;
@@ -22,6 +23,7 @@ public static class InfrastructureServices
         services.AddSingleton<IOutboundHttp, OutboundHttp>();
 
         services.AddSingleton<ContentSanitizer>();
+        services.AddSingleton<FeedDiscovery>();
 
         services.AddScoped<FeedRefresher>();
         services.AddScoped<IFeedRefresher>(sp => sp.GetRequiredService<FeedRefresher>());
