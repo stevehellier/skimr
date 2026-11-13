@@ -6,7 +6,7 @@ Full plan, data model and API surface: `docs/PLAN.md`.
 
 ## Status
 
-Phase 5 (Power features) done: boards, search (FTS5 / tsvector), full-text extraction, OPML import/export, retention, favicons, image proxy, installable PWA; 200k-article performance targets met. Next: Phase 6 (APIs).
+Phase 7 (optional AI: summaries, AI feeds) done; Phases 1–6 done (reader, power features, REST + Google Reader + Fever APIs). Next: Phase 8 (packaging and docs). Manual NetNewsWire/Reeder sync check is deferred to Phase 8.
 
 ## Architecture
 
@@ -29,6 +29,7 @@ Phase 5 (Power features) done: boards, search (FTS5 / tsvector), full-text extra
 - No inline `<script>` or `style=""` in our markup — the CSP forbids them.
 - New config keys are read and validated in `SkimrSettings.Load` (PLAN D28), never `IOptions.ValidateOnStart`.
 - No secrets in the repo. `.env` must be in `.gitignore` before one is created.
+- AI goes through `ISummariser` only, and nothing is sent unless the admin configured a provider **and** the user turned AI on (PLAN D12, D62). Model output is untrusted: render it as text, never markup.
 - API tokens stored as SHA-256 only; the plain token is shown once. `/api` accepts bearer tokens only, never cookies (PLAN D33).
 - Every page needs a signed-in user (fallback policy). Anything anonymous must say so explicitly: `[AllowAnonymous]` or `.AllowAnonymous()`.
 - Reader pages are Interactive Server with `prerender: false` (PLAN D42): load data in `OnInitialized/OnParametersSet`, start JS in `OnAfterRenderAsync(firstRender)`. UI services use `IDbContextFactory`, one context per call (D46).
@@ -70,4 +71,4 @@ Config order: `appsettings.json` → env vars `SKIMR__Section__Key` → command 
 
 ## Decisions
 
-See `docs/PLAN.md` §4 (D1–D61). Add new decisions there, not here.
+See `docs/PLAN.md` §4 (D1–D63). Add new decisions there, not here.

@@ -281,6 +281,7 @@ public abstract class RestApiTests(AppFixture fixture)
         "GetCounts", "ListArticles", "GetArticle", "UpdateArticle", "UpdateArticles", "MarkAllRead", "LoadFullText", "Search",
         "ListBoards", "CreateBoard", "RenameBoard", "DeleteBoard", "AddToBoard", "RemoveFromBoard",
         "GetSettings", "UpdateSettings", "GetViewPreference", "SaveViewPreference",
+        "SummariseArticle", "ListAiFeeds", "CreateAiFeed", "UpdateAiFeed", "DeleteAiFeed",
         "ListUsers", "CreateUser", "UpdateUser", "DeleteUser", "ListInvites", "CreateInvite", "RevokeInvite", "GetAdminSettings", "UpdateAdminSettings", "ListFeedHealth",
     ];
 
