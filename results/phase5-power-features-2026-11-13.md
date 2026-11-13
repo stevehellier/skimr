@@ -41,7 +41,7 @@ Test run summary: Passed!
 | CSP in both proxy modes | On: `img-src 'self' data:`; off: `img-src 'self' data: https:` | Pass |
 | Favicons | Declared icon found, identical icon stored once, HTML-as-favicon rejected, failures remembered, served from the app | Pass |
 | In a real browser (Playwright) | `/` focuses search, query and changed query, hostile query, add to a new board and open it, an `http://` image loads through the proxy (`naturalWidth` 1), service worker registered at the right scope, manifest served, cache holds only the offline page and fingerprinted files, zero console errors | **Pass, real browser** |
-| Performance (500 sources / 200k articles) | `results/phase5-perf-2026-11-13.md`: nav 36 ms, every first page ≤ 4 ms, mark-read + nav 31 ms, search ≤ 50 ms | Pass |
+| Performance (500 sources / 200k articles) | `results/phase5-perf-2026-11-13.md`, two conditions. Worst case (no statistics, straight after a bulk load): nav 29 ms, pages ≤ 28 ms, per click 31 ms, search ≤ 81 ms. Steady state (after the startup `PRAGMA optimize`): nav 35 ms, pages ≤ 5.5 ms, per click 33 ms, search ≤ 51 ms | Pass |
 
 ## Problems found and fixed during the phase
 
