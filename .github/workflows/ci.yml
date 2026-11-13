@@ -18,8 +18,17 @@ jobs:
           global-json-file: global.json
       - run: dotnet restore
       - run: dotnet build --no-restore -c Release
+      # Headless Chromium for the Playwright E2E tests (agreed in Phase 4).
+      - run: pwsh tests/Skimr.E2ETests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
       # Postgres tests use Testcontainers; Docker is preinstalled on ubuntu-latest.
       - run: dotnet test --no-build -c Release
+      - name: Upload E2E screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: tests/Skimr.E2ETests/bin/Release/net10.0/screenshots/
+          if-no-files-found: ignore
 
   docker:
     runs-on: ubuntu-latest

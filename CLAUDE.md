@@ -6,7 +6,7 @@ Full plan, data model and API surface: `docs/PLAN.md`.
 
 ## Status
 
-Phase 3 (Auth and multi-user) done: Identity with user-name sign-in, setup wizard with a one-time code, registration modes and invites, admin user management, hashed API tokens (bearer-only API), lockout, rate limits. Next: Phase 4 (Core UI).
+Phase 4 (Core UI) done: reader with nav and unread counts, three layouts, reader pane, mark-read modes, Read Later, keyboard shortcuts, add/organise sources and folders, light/dark/system themes, responsive layout. Next: Phase 5 (Power features).
 
 ## Architecture
 
@@ -28,6 +28,8 @@ Phase 3 (Auth and multi-user) done: Identity with user-name sign-in, setup wizar
 - No secrets in the repo. `.env` must be in `.gitignore` before one is created.
 - API tokens stored as SHA-256 only; the plain token is shown once. `/api` accepts bearer tokens only, never cookies (PLAN D33).
 - Every page needs a signed-in user (fallback policy). Anything anonymous must say so explicitly: `[AllowAnonymous]` or `.AllowAnonymous()`.
+- Reader pages are Interactive Server with `prerender: false` (PLAN D42): load data in `OnInitialized/OnParametersSet`, start JS in `OnAfterRenderAsync(firstRender)`. UI services use `IDbContextFactory`, one context per call (D46).
+- Every reading/library service method takes the signed-in user id and filters by it; never trust ids from the browser.
 - Account forms are static SSR. Blazor form names must be unique per page; for per-row actions use one named form plus `<button form="id" name="Model.Command" value="...">`.
 
 ## Conventions
@@ -47,6 +49,7 @@ Shell is PowerShell 7.
 ```powershell
 dotnet build                                   # 0 warnings required
 dotnet test                                    # Microsoft.Testing.Platform; Postgres tests need Docker running
+pwsh tests/Skimr.E2ETests/bin/Debug/net10.0/playwright.ps1 install chromium  # once, for the E2E tests
 dotnet tool restore                            # pins dotnet-ef
 dotnet run --project src/Skimr.Web             # SQLite under ./data by default
 
@@ -62,4 +65,4 @@ Config order: `appsettings.json` → env vars `SKIMR__Section__Key` → command 
 
 ## Decisions
 
-See `docs/PLAN.md` §4 (D1–D38). Add new decisions there, not here.
+See `docs/PLAN.md` §4 (D1–D48). Add new decisions there, not here.

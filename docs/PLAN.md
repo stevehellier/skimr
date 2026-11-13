@@ -140,6 +140,16 @@ Folders map to `user/-/label/<name>`, Read Later to `starred`. Boards are not ex
 | D36 | Default registration mode is invite-only; the setup wizard and admin page choose the mode, stored in `AppSettings`, and `Registration:DefaultMode` only applies until then | Satisfies "admin can disable open registration" without guessing a default |
 | D37 | Disabling a user, resetting a password or changing roles rotates the security stamp; cookies are revalidated every minute, live Blazor circuits every minute, tokens on every request | Revocation takes effect promptly everywhere. Only a *disabled* account (lockout end = max) loses its tokens and sessions; a temporary lockout from wrong passwords blocks web sign-in only, so a stranger who knows a user name can't take that user's sync apps offline |
 | D38 | Rate limits: setup/login/register POSTs 10/min per IP; API 600/min per user (`Security:*`). Status codes re-execute to `/status/{code}` | Brute-force and abuse protection without limiting page views. The limiter runs after authorization so API requests are partitioned by token owner |
+| D39 | Real-browser checks run as Playwright E2E tests (headless Chromium) in CI (agreed 2026-11-13) | The only way to prove a live circuit under the CSP, keyboard use and phone layout without a person in the loop |
+| D40 | "Today" = published in the last 24 hours (agreed 2026-11-13) | No per-user time zone needed; the server runs in UTC |
+| D41 | Unsubscribing deletes the user's unsaved article rows for that source; saved ones stay in Read Later. All, Today, folder views and unread counts only include sources the user still subscribes to | Read Later is a promise to keep something; leftovers must not inflate counts |
+| D42 | Reader, Organise and Settings are Interactive Server with prerendering off; JS starts in `OnAfterRenderAsync(firstRender)`. Account and admin pages stay static SSR forms | Prerendering would run every query twice and fire "mark read on open" before the circuit exists |
+| D43 | Theme is per device: a `skimr.theme` cookie set by reader.js and read by `App.razor` to render `<html data-theme>` | No flash of the wrong theme, no DB read on every request |
+| D44 | Folders and sources are reordered with up/down buttons, not drag and drop | Keyboard and screen-reader accessible with no extra JS |
+| D45 | Mark-read modes: on open (default), on open or scroll past, manual only. Per user | Spec |
+| D46 | UI services (`ReadingService`, `LibraryService`) take `IDbContextFactory` and use one context per call; `AddDbContextFactory` also registers the scoped context Identity and the refresher use | An interactive circuit outlives any one operation, so a circuit-scoped context would go stale and hit concurrency errors |
+| D47 | `/` (search) and full-text, OPML, boards arrive in Phase 5 with search | Not wired to nothing in the meantime |
+| D48 | Inputs, selects and outlined buttons use `--control-border` (3:1 against backgrounds); `--border` stays for decorative dividers. A unit test checks every colour pairing for AA in both themes | WCAG 1.4.11 non-text contrast |
 
 ## 5. Dependencies (all pre-approved by the stack; listed so later PRs don't stall)
 
@@ -159,6 +169,7 @@ Folders map to `user/-/label/<name>`, Read Later to `starred`. Boards are not ex
 | xunit.v3, xunit.runner.visualstudio, Microsoft.NET.Test.Sdk | Apache-2.0 / MIT | Tests |
 | AwesomeAssertions | Apache-2.0 | Assertions |
 | bunit | MIT | Component tests |
+| Microsoft.Playwright | Apache-2.0 | E2E tests in a real browser (D39) |
 | Microsoft.AspNetCore.Mvc.Testing | MIT | `WebApplicationFactory` |
 | Testcontainers.PostgreSql | MIT | Postgres integration tests |
 
@@ -173,7 +184,7 @@ Each phase: one GitHub issue, one `<type>/<slug>` branch, one PR, merged when CI
 | 1 | **Skeleton** — solution, projects, DI, config binding + startup validation, Serilog, health checks, SQLite + Postgres wiring, first migration per provider, auto-migrate flag, Dockerfile, CI | `dotnet build` has 0 warnings; tests pass; app starts on SQLite and on Postgres (Testcontainers); `/health` and `/health/ready` return 200; `docker build` + `docker run` report healthy; CI green |
 | 2 | **Domain and fetching** — entities, parsers (RSS 0.9x/2.0, RDF, Atom, JSON Feed), discovery, scheduler, conditional GET, backoff, dedup, sanitiser, SSRF guard, WebSub | Fixture-based parser tests incl. bad dates, missing GUIDs, CDATA, mixed encodings, relative URLs; unit tests for dedup, backoff, scheduler, sanitiser, SSRF (incl. redirect-to-private and DNS rebinding); an external-entity fixture cannot read a local file and billion-laughs does not expand (D25); ingest runs on both providers |
 | 3 | **Auth and multi-user** — Identity, setup wizard, registration modes, invites, admin user management, API tokens, lockout, rate limits | Integration tests: wizard runs once only; closed registration blocks sign-up; token auth works and revocation sticks; lockout and rate limit trigger |
-| 4 | **Core UI** — nav + unread counts, add/organise sources and folders, three layouts, reader pane, mark-read modes, Read Later, keyboard shortcuts, themes, responsive | bUnit tests for article list and nav counts; manual walk-through on desktop + mobile width; keyboard-only use works; AA contrast checked; a live interactive circuit runs with no CSP violations in a real browser console |
+| 4 | **Core UI** — nav + unread counts, add/organise sources and folders, three layouts, reader pane, mark-read modes, Read Later, keyboard shortcuts, themes, responsive | bUnit tests for article list and nav counts; service tests prove every operation is scoped to its user (both providers); Playwright E2E in CI: live circuit with no console errors (no CSP violations), keyboard flow, focus moves, theme persists, phone-width layout; AA contrast checked by a unit test over the colour tokens |
 | 5 | **Power features** — Boards, search (FTS5 / tsvector), full text, OPML, retention, favicons, image proxy, PWA | OPML round-trip test with nested folders; search tests on both providers; retention never removes saved/boarded; perf run: 500 sources / 200k articles, counts and first page each < 100 ms on SQLite (results saved under `results/`) |
 | 6 | **APIs** — REST complete + Scalar, Google Reader; 6b Fever | API integration tests on both providers incl. a scripted GReader sync flow; manual sync from NetNewsWire |
 | 7 | **AI (optional)** — `ISummariser`, OpenAI-compatible + Anthropic, summaries, AI feeds | Tests with a fake provider; no outbound call when the user hasn't opted in |
