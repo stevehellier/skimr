@@ -13,11 +13,8 @@ Skimr is pre-1.0. Only the latest release gets security fixes; upgrade to it bef
 
 **Don't open a public issue, pull request or discussion for a security problem.**
 
-- **Preferred:** use GitHub's private vulnerability reporting: the repository's **Security** tab →
-  **Report a vulnerability**. GitHub offers this only on public repositories; while this one is
-  private, use the next option.
-- **While the repository is private:** contact the maintainer, stevehellier, directly on GitHub and
-  ask for a private channel. Don't include details until you have one.
+Use GitHub's private vulnerability reporting: the repository's **Security** tab → **Report a
+vulnerability**. Only the maintainers see the report, and the fix can be prepared in a private fork.
 
 Please include:
 

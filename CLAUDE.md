@@ -64,7 +64,7 @@ dotnet ef migrations add <Name> --project src/Skimr.Infrastructure.Sqlite
 dotnet ef migrations add <Name> --project src/Skimr.Infrastructure.Postgres
 
 docker build -f deploy/Dockerfile -t skimr:dev .
-docker compose -f deploy/docker-compose.yml up -d --build   # SKIMR_PORT=9480 if 8080 is reserved
+docker compose -f deploy/docker-compose.yml up -d           # pulls ghcr.io/stevehellier/skimr (public); SKIMR_PORT=9480 if 8080 is reserved
 dotnet publish src/Skimr.Web -p:PublishProfile=linux-x64   # also linux-arm64, win-x64, osx-arm64 -> artifacts/publish/<rid>
 ```
 
