@@ -1,0 +1,113 @@
+name: Release
+
+# Push a tag like v0.1.0. The full CI suite runs first; then the multi-arch image goes to GHCR
+# and the four single-file builds are attached to a GitHub Release with the CHANGELOG notes.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  image:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.licenses=AGPL-3.0-only
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ github.ref_name }}
+          cache-from: type=gha
+
+  binaries:
+    needs: ci
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rid: [linux-x64, linux-arm64, win-x64, osx-arm64]
+    env:
+      RID: ${{ matrix.rid }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Publish
+        run: dotnet publish src/Skimr.Web "-p:PublishProfile=$RID" "-p:Version=${GITHUB_REF_NAME#v}"
+      - name: Package
+        run: |
+          name="skimr-${GITHUB_REF_NAME}-$RID"
+          dir="$RUNNER_TEMP/$name"
+          mkdir -p "$dir"
+          cp -a "artifacts/publish/$RID/." "$dir/"
+          rm -f "$dir/web.config" "$dir/appsettings.Development.json"
+          cp LICENSE README.md CHANGELOG.md "$dir/"
+          case "$RID" in
+            linux-*) cp deploy/install.sh deploy/skimr.service "$dir/" ;;
+            win-*) cp deploy/install.ps1 "$dir/" ;;
+            osx-*) cp deploy/local.skimr.plist "$dir/" ;;
+          esac
+          mkdir -p dist
+          if [[ "$RID" == win-* ]]; then
+            (cd "$RUNNER_TEMP" && zip -qr "$GITHUB_WORKSPACE/dist/$name.zip" "$name")
+          else
+            tar -C "$RUNNER_TEMP" -czf "dist/$name.tar.gz" "$name"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.rid }}
+          path: dist/*
+
+  release:
+    needs: [image, binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum -- * > SHA256SUMS
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '/^## \[/{p = index($0, "[" v "]") > 0; next} p' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "CHANGELOG.md has no section for $version"; exit 1; }
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:$version"
+          printf '\nImage: %s (private registry: run docker login ghcr.io first).\n' "$image" >> notes.md
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "Skimr $GITHUB_REF_NAME" --notes-file notes.md --verify-tag

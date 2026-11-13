@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # release.yml runs the whole suite before it publishes anything.
+  workflow_call:
 
 permissions:
   contents: read
@@ -58,7 +60,7 @@ jobs:
         run: |
           docker run -d --name skimr-ci -p 8080:8080 skimr:ci
           healthy=false
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             status=$(docker inspect -f '{{.State.Health.Status}}' skimr-ci)
             [ "$status" = "healthy" ] && healthy=true && break
             sleep 3
@@ -78,3 +80,43 @@ jobs:
             echo "$code $asset"
             [ "$code" = "200" ] || exit 1
           done
+
+  install-linux:
+    # A real systemd host: install, upgrade and uninstall the linux-x64 single-file build.
+    runs-on: ubuntu-latest
+    needs: build-test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Publish linux-x64
+        run: dotnet publish src/Skimr.Web -p:PublishProfile=linux-x64
+      - name: Stage release folder
+        run: |
+          mkdir -p "$RUNNER_TEMP/skimr"
+          cp -a artifacts/publish/linux-x64/. "$RUNNER_TEMP/skimr/"
+          rm -f "$RUNNER_TEMP/skimr/web.config" "$RUNNER_TEMP/skimr/appsettings.Development.json"
+          cp deploy/install.sh deploy/skimr.service "$RUNNER_TEMP/skimr/"
+      - name: Install
+        run: sudo "$RUNNER_TEMP/skimr/install.sh" --port 8090
+      - name: Check
+        run: |
+          curl -sf http://localhost:8090/health/ready
+          curl -sf -o /dev/null http://localhost:8090/setup
+          test "$(systemctl show -p User --value skimr)" = skimr
+          sudo stat -c '%U:%G %a' /etc/skimr/skimr.env | grep -qx 'root:skimr 640'
+          systemd-analyze security skimr.service --no-pager | tail -n 1
+          sudo journalctl -u skimr --no-pager | grep -q "setup code"
+      - name: Upgrade in place
+        run: |
+          sudo "$RUNNER_TEMP/skimr/install.sh" | tee "$RUNNER_TEMP/upgrade.txt"
+          grep -q "upgraded" "$RUNNER_TEMP/upgrade.txt"
+          curl -sf http://localhost:8090/health/ready
+      - name: Uninstall and purge
+        run: |
+          sudo "$RUNNER_TEMP/skimr/install.sh" --uninstall
+          test -d /var/lib/skimr
+          sudo "$RUNNER_TEMP/skimr/install.sh" --uninstall --purge
+          if id skimr; then exit 1; fi
+          test ! -e /var/lib/skimr

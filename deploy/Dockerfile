@@ -17,7 +17,9 @@ RUN dotnet restore src/Skimr.Web/Skimr.Web.csproj -a $TARGETARCH
 COPY src/ src/
 # No --no-restore: the SDK decides whether to include Blazor's _framework assets (blazor.web.js)
 # from the sources, which aren't present during the cached restore above.
-RUN dotnet publish src/Skimr.Web/Skimr.Web.csproj -c Release -a $TARGETARCH -o /app \
+# Release builds pass the tag (v0.1.0); local builds keep the version in Directory.Build.props.
+ARG VERSION=
+RUN dotnet publish src/Skimr.Web/Skimr.Web.csproj -c Release -a $TARGETARCH -o /app ${VERSION:+-p:Version=${VERSION#v}} \
     && mkdir /data
 
 # -extra adds ICU and tzdata (time zones, culture-aware sorting) to the chiseled image.
