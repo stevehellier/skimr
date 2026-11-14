@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/) (0.x: the API and
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-14
+
 ### Changed
 - The repository and the Docker image are public. The Compose files pull
   `ghcr.io/stevehellier/skimr` (pin a release with `SKIMR_VERSION`) instead of building from source,
@@ -65,5 +67,6 @@ The first release.
 - `install.sh` (hardened systemd service), `install.ps1` (Windows service) and a launchd example.
 - Retention of old read articles, and SQLite statistics refreshed at startup and after retention.
 
+[0.1.2]: https://github.com/stevehellier/skimr/releases/tag/v0.1.2
 [0.1.1]: https://github.com/stevehellier/skimr/releases/tag/v0.1.1
 [0.1.0]: https://github.com/stevehellier/skimr/releases/tag/v0.1.0
