@@ -114,8 +114,6 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
     private static Task ReaderReadyAsync(IPage page) =>
         Assertions.Expect(page.Locator("html[data-reader-ready]")).ToHaveCountAsync(1);
 
-    private static Task<string?> ActiveElementIdAsync(IPage page) => page.EvaluateAsync<string?>("() => document.activeElement?.id ?? null");
-
     [Fact]
     public async Task Setup_subscribe_and_read_with_the_keyboard_on_desktop_and_phone()
     {
@@ -165,7 +163,8 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         await ReaderReadyAsync(page);
         await page.Locator("body").PressAsync("j");
         await Assertions.Expect(page.Locator(".article-pane h2")).ToHaveTextAsync("Local story 1");
-        (await ActiveElementIdAsync(page)).Should().Be("pane-title", "opening an article moves focus to it");
+        // Focus moves after the render, over the circuit, so wait for it (#27).
+        await Assertions.Expect(page.Locator("#pane-title")).ToBeFocusedAsync(); // opening an article moves focus to it
 
         // The feed's http:// image loads through the proxy (same origin, so the CSP allows it).
         var pixel = page.Locator(".article-body img");
@@ -192,7 +191,7 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
         var openId = await page.Locator("li.article-item.selected").GetAttributeAsync("data-article-id");
         await page.Keyboard.PressAsync("Escape");
         await Assertions.Expect(page.Locator(".article-pane")).ToHaveCountAsync(0);
-        (await ActiveElementIdAsync(page)).Should().Be($"article-{openId}", "closing returns focus to the article in the list");
+        await Assertions.Expect(page.Locator($"#article-{openId}")).ToBeFocusedAsync(); // closing returns focus to the article in the list
 
         await page.Keyboard.PressAsync("g");
         await page.Keyboard.PressAsync("s");
@@ -201,7 +200,7 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
 
         // ---- Search ------------------------------------------------------------------------
         await page.Locator("body").PressAsync("/");
-        (await ActiveElementIdAsync(page)).Should().Be("search-box", "/ focuses search");
+        await Assertions.Expect(page.Locator("#search-box")).ToBeFocusedAsync(); // / focuses search
         await page.Keyboard.TypeAsync("story 2");
         await page.Keyboard.PressAsync("Enter");
         await Assertions.Expect(page).ToHaveURLAsync(new Regex("/search\\?q=story%202$"));
