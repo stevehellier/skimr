@@ -279,7 +279,20 @@ public sealed partial class ReaderE2ETests : IAsyncLifetime
             HasTouch = true,
         });
         await phone.GotoAsync(_baseUrl + "saved");
-        await Assertions.Expect(phone.Locator(".article-item")).ToHaveCountAsync(1);
+        // A new context starts its own circuit, which can take seconds on a busy CI runner (#23):
+        // wait for it as the first load does, and record the page's state if it never arrives.
+        try
+        {
+            await Assertions.Expect(phone.Locator("html[data-reader-ready]")).ToHaveCountAsync(1, new() { Timeout = 20_000 });
+            await Assertions.Expect(phone.Locator(".article-item")).ToHaveCountAsync(1);
+        }
+        catch (PlaywrightException e)
+        {
+            await ShotAsync(phone, "phone-list-failed");
+            throw new InvalidOperationException(
+                $"Phone Saved list didn't load. Url: {phone.Url}; reader ready: {await phone.Locator("html[data-reader-ready]").CountAsync() == 1}; " +
+                $"body: {await phone.InnerTextAsync("body")}; console: [{string.Join(" | ", _consoleErrors)}]", e);
+        }
         await Assertions.Expect(phone.Locator(".reader-nav")).ToBeHiddenAsync();
         await ShotAsync(phone, "phone-list");
 
