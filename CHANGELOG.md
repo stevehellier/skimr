@@ -11,6 +11,11 @@ and versions follow [Semantic Versioning](https://semver.org/) (0.x: the API and
   so the quick start needs only the Compose file.
 - Security reports go through GitHub's private vulnerability reporting.
 
+### Fixed
+- The Compose files load in Portainer: the top-level `name:` is gone and the volumes have fixed
+  names instead (`skimr_skimr-data`; `skimr-postgres_skimr-data` and `skimr-postgres_skimr-db`), the
+  same as before, so existing installs keep their data.
+
 ## [0.1.1] - 2026-11-13
 
 ### Added

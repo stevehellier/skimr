@@ -1,8 +1,6 @@
 # Skimr with PostgreSQL 17.
 #   cp example.env .env      # then set POSTGRES_PASSWORD in .env (next to this file)
 #   docker compose -f docker-compose.postgres.yml up -d
-name: skimr-postgres
-
 services:
   skimr:
     image: ghcr.io/stevehellier/skimr:${SKIMR_VERSION:-latest}
@@ -37,5 +35,8 @@ services:
       retries: 10
 
 volumes:
+  # Fixed names (not the project or Portainer stack name), so backups and upgrades always find them.
   skimr-data:
+    name: skimr-postgres_skimr-data
   skimr-db:
+    name: skimr-postgres_skimr-db
