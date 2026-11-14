@@ -2,9 +2,6 @@
 #   docker compose -f docker-compose.yml up -d
 # Then open http://localhost:8080 and enter the setup code from:
 #   docker compose -f docker-compose.yml logs skimr | grep "setup code"
-# Fixed project name, so the volume is always skimr_skimr-data (see the README backup section).
-name: skimr
-
 services:
   skimr:
     # Pin a release with SKIMR_VERSION (e.g. 0.1.1 or 0.1); latest follows every release.
@@ -21,3 +18,6 @@ services:
 
 volumes:
   skimr-data:
+    # A fixed name (not the project or Portainer stack name), so backups and upgrades always find it.
+    # No top-level "name:": Portainer and docker stack deploy reject it.
+    name: skimr_skimr-data
