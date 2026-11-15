@@ -41,7 +41,7 @@ appear within a minute of adding a source.
 - **Portainer:** paste `docker-compose.yml` into a new stack (Stacks → Add stack → Web editor) and set
   `SKIMR_PORT` or `SKIMR_VERSION` under environment variables if you need them.
 - The image is `ghcr.io/stevehellier/skimr`, for `linux/amd64` and `linux/arm64` (Raspberry Pi 4/5).
-  `latest` follows every release; pin one with `SKIMR_VERSION=0.1.1` (or `0.1` for that line's fixes).
+  `latest` follows every release; pin one with `SKIMR_VERSION=0.1.2` (or `0.1` for that line's fixes).
 
 **PostgreSQL** instead of SQLite:
 
